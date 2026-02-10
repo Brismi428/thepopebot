@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+.venv
+
+# Environment files (never commit secrets)
+.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Testing artifacts
+.pytest_cache/
+.coverage
+htmlcov/
+*.log
+
+# Agent output (committed via PRs, but ignore during development)
+agent_output/
+
+# Temporary files
+tmp/
+temp/
+*.tmp

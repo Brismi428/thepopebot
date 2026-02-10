@@ -1,0 +1,4 @@
+# Website Uptime Monitor - Python Dependencies
+
+# HTTP client library for making requests to monitored URLs
+requests>=2.31.0
