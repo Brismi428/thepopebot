@@ -1,69 +1,81 @@
-# thepopebot
+# WAT Factory Bot
 
-**Autonomous AI agents. All the power. None of the leaked API keys.**
+**Autonomous AI agent that builds complete AI-powered systems from natural language.**
+
+Chat with it on Telegram. Ask it to build you a system. It generates the spec, builds the code, tests it, and delivers a deployable package -- all autonomously.
 
 ---
 
-## Why thepopebot?
+## What Is This?
 
-**Secure by default** — Other frameworks hand credentials to the LLM and hope for the best. thepopebot is different: the AI literally cannot access your secrets, even if it tries. Secrets are filtered at the process level before the agent's shell even starts.
+The WAT Factory Bot merges two systems:
 
-**The repository IS the agent** — Every action your agent takes is a git commit. You can see exactly what it did, when, and why. If it screws up, revert it. Want to clone your agent? Fork the repo — code, personality, scheduled jobs, full history, all of it goes with your fork.
+1. **thepopebot** -- An autonomous AI agent template with Telegram chat, cron scheduling, webhook triggers, and Docker-based job execution via GitHub Actions
+2. **WAT Systems Factory** -- A meta-system that generates complete, deployable AI agent systems from natural language descriptions
 
-**Free compute, built in** — Every GitHub account comes with free cloud computing time. thepopebot uses that to run your agent. One task or a hundred in parallel — the compute is already included.
-
-**Self-evolving** — The agent modifies its own code through pull requests. Every change is auditable, every change is reversible. You stay in control.
+The result: a bot you can talk to on Telegram that can chat, handle tasks, run background jobs -- AND build entire WAT systems (Workflows, Agents, Tools) when you say "build me a [anything]".
 
 ---
 
 ## How It Works
+
+### Simple Chat & Tasks
+
+```
+You: "What's the weather in NYC?"
+Bot: [searches web, responds]
+
+You: "Create a job to update the README"
+Bot: [presents job description, gets approval, creates job]
+Bot: [notifies you when done]
+```
+
+### Building Systems
+
+```
+You: "Build me a lead generation system"
+Bot: "What problem are you solving? What goes in? What comes out?"
+You: [describe requirements]
+Bot: [generates PRP spec, asks for approval]
+Bot: [builds complete WAT system: workflow, tools, GitHub Actions, docs]
+Bot: "Done! System is at systems/lead-gen-system/"
+```
+
+### Architecture
 
 ```
 ┌───────────────────────────────────────────────────────────────────────┐
 │                                                                       │
 │  ┌─────────────────┐         ┌─────────────────┐                     │
 │  │  Event Handler  │ ──1──►  │     GitHub      │                     │
-│  │  (creates job)  │         │ (job/* branch)  │                     │
-│  └────────▲────────┘         └────────┬────────┘                     │
+│  │  (Telegram +    │         │ (job/* branch)  │                     │
+│  │   webhooks)     │         └────────┬────────┘                     │
+│  └────────▲────────┘                  │                              │
+│           │                  2. Docker Agent runs                     │
+│           │                     (builds systems,                     │
+│           │                      executes tasks)                     │
 │           │                           │                              │
-│           │                           2 (triggers run-job.yml)    │
+│           │                  3. PR with results                      │
 │           │                           │                              │
-│           │                           ▼                              │
-│           │                  ┌─────────────────┐                     │
-│           │                  │  Docker Agent   │                     │
-│           │                  │  (runs Pi, PRs) │                     │
-│           │                  └────────┬────────┘                     │
-│           │                           │                              │
-│           │                           3 (creates PR)                 │
-│           │                           │                              │
-│           │                           ▼                              │
-│           │                  ┌─────────────────┐                     │
-│           │                  │     GitHub      │                     │
-│           │                  │   (PR opened)   │                     │
-│           │                  └────────┬────────┘                     │
-│           │                           │                              │
-│           │                           4a (auto-merge.yml)            │
-│           │                           4b (update-event-handler.yml)  │
-│           │                           │                              │
-│           5 (Telegram notification)   │                              │
+│           5. Notification    4. Auto-merge                           │
 │           └───────────────────────────┘                              │
 │                                                                       │
 └───────────────────────────────────────────────────────────────────────┘
 ```
 
-You talk to your bot on Telegram (or hit a webhook). The Event Handler creates a job branch. GitHub Actions spins up a Docker container with the Pi coding agent. The agent does the work, commits the results, and opens a PR. Auto-merge handles the rest. You get a Telegram notification when it's done.
-
 ---
 
-## Get FREE server time on Github!
+## What's a WAT System?
 
-| | thepopebot | Other platforms |
-|---|---|---|
-| **Public repos** | Free. $0. GitHub Actions doesn't charge. | $20-100+/month |
-| **Private repos** | 2,000 free minutes/month (every GitHub plan, including free) | $20-100+/month |
-| **Infrastructure** | GitHub Actions (already included) | Dedicated servers |
+Every system the factory builds follows the WAT framework:
 
-You just bring your own [Anthropic API key](https://console.anthropic.com/).
+| Component | Format | Role |
+|-----------|--------|------|
+| **Workflows** | Markdown (.md) | Natural language process instructions |
+| **Agents** | Claude Code | The AI brain that executes workflows |
+| **Tools** | Python (.py) | Executable actions |
+
+Generated systems are self-contained and include: `workflow.md`, `tools/`, `.github/workflows/`, `CLAUDE.md`, `README.md`, `requirements.txt`, `.env.example`.
 
 ---
 
@@ -79,39 +91,64 @@ You just bring your own [Anthropic API key](https://console.anthropic.com/).
 | **GitHub CLI** | [cli.github.com](https://cli.github.com) |
 | **ngrok*** | [ngrok.com](https://ngrok.com/download) |
 
-*\*ngrok is only required for local development. Production deployments don't need it.*
+*\*ngrok is only required for local development.*
 
-### Three steps
+### Three Steps
 
-**Step 1** — Fork this repository:
+**Step 1** -- Fork this repository and enable GitHub Actions in the Actions tab.
 
-[![Fork this repo](https://img.shields.io/badge/Fork_this_repo-238636?style=for-the-badge&logo=github&logoColor=white)](https://github.com/stephengpope/thepopebot/fork)
-
-> GitHub Actions are disabled by default on forks. Go to the **Actions** tab in your fork and enable them.
-
-**Step 2** — Clone your fork:
+**Step 2** -- Clone your fork:
 
 ```bash
 git clone https://github.com/YOUR_USERNAME/thepopebot.git
 cd thepopebot
 ```
 
-**Step 3** — Run the setup wizard:
+**Step 3** -- Run the setup wizard:
 
 ```bash
 npm run setup
 ```
 
-The wizard handles everything:
-- Checks prerequisites (Node.js, Git, GitHub CLI, ngrok)
-- Creates a GitHub Personal Access Token
-- Collects API keys (Anthropic required; OpenAI, Groq, and [Brave Search](https://api-dashboard.search.brave.com/app/keys) optional)
-- Sets GitHub repository secrets and variables
-- Sets up Telegram bot
-- Starts the server + ngrok, generates `event_handler/.env`
-- Registers webhooks and verifies everything works
+The wizard handles everything: prerequisites, GitHub PAT, API keys, secrets, Telegram bot setup, server startup, and webhook registration.
 
-**After setup, message your Telegram bot to create jobs!**
+### Configure ALLOWED_PATHS
+
+For factory-generated systems to auto-merge, set this GitHub repository variable:
+
+**Settings > Secrets and variables > Actions > Variables**
+
+| Variable | Value |
+|----------|-------|
+| `ALLOWED_PATHS` | `/systems,/library,/PRPs,/logs,/factory` |
+
+This allows the bot's jobs to commit factory output (generated systems, pattern library updates, PRPs) in addition to logs.
+
+---
+
+## Project Structure
+
+```
+/
+├── event_handler/           # Telegram bot + webhook server (Node.js)
+├── operating_system/        # Bot personality, chat prompts, cron/trigger configs
+├── factory/                 # WAT Systems Factory build engine
+│   ├── workflow.md          # The factory's build process
+│   ├── tools/               # Factory tools (Python)
+│   └── templates/           # Templates for generated artifacts
+├── library/                 # Learned patterns and reusable tools
+├── PRPs/                    # Product Requirements Prompts (system specs)
+├── systems/                 # Output: completed WAT systems
+├── config/                  # MCP registry, GitHub config
+├── converters/              # n8n-to-WAT converters
+├── .claude/commands/        # Claude Code slash commands (/generate-prp, /execute-prp)
+├── .claude/skills/          # Reusable skill modules
+├── .github/workflows/       # GitHub Actions (job lifecycle)
+├── logs/                    # Job logs
+├── setup/                   # Setup wizard
+├── INITIAL.md               # Simple intake template for system requests
+└── CLAUDE.md                # Full operating instructions for AI assistants
+```
 
 ---
 
@@ -119,9 +156,43 @@ The wizard handles everything:
 
 | Document | Description |
 |----------|-------------|
-| [Architecture](docs/ARCHITECTURE.md) | Two-layer design, file structure, API endpoints, GitHub Actions, Docker agent |
-| [Configuration](docs/CONFIGURATION.md) | Environment variables, GitHub secrets, repo variables, ngrok, Telegram setup |
-| [Customization](docs/CUSTOMIZATION.md) | Personality, skills, operating system files, using your bot, security details |
+| [CLAUDE.md](CLAUDE.md) | Complete operating instructions (agent architecture + factory) |
+| [Architecture](docs/ARCHITECTURE.md) | Two-layer design, file structure, API endpoints |
+| [Configuration](docs/CONFIGURATION.md) | Environment variables, GitHub secrets, repo variables |
+| [Customization](docs/CUSTOMIZATION.md) | Personality, skills, operating system files |
 | [Auto-Merge](docs/AUTO_MERGE.md) | Auto-merge controls, ALLOWED_PATHS configuration |
-| [How to Use Pi](docs/HOW_TO_USE_PI.md) | Guide to the Pi coding agent |
-| [Security](docs/SECURITY_TODO.md) | Security hardening plan |
+| [Factory Workflow](factory/workflow.md) | The factory's build process |
+| [Pattern Library](library/patterns.md) | Proven workflow patterns |
+| [Tool Catalog](library/tool_catalog.md) | Reusable tool patterns |
+
+---
+
+## Factory Capabilities
+
+### Build from Prompt
+Describe a problem on Telegram. The bot generates a PRP (spec), builds the system, tests it, and delivers a complete package.
+
+### PRP Workflow
+Two-step process: `/generate-prp` creates a detailed specification, `/execute-prp` builds the system from it. The PRP catches ambiguity before code generation starts.
+
+### Pattern Library
+The factory learns from every build. Proven patterns (Scrape > Process > Output, Monitor > Detect > Alert, etc.) are cataloged and reused.
+
+### n8n Conversion
+Paste an n8n workflow JSON. The factory translates it into a WAT system that runs on GitHub Actions.
+
+### Self-Improvement
+After every build, the factory updates its pattern library and tool catalog.
+
+---
+
+## Security
+
+- API keys live in GitHub Secrets -- never in code
+- The `env-sanitizer` extension prevents the LLM from accessing protected credentials
+- All changes go through PRs with auto-merge path controls
+- Everything is versioned in Git -- rollback is always possible
+
+---
+
+*Built with thepopebot + WAT Systems Factory*

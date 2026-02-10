@@ -1,0 +1,102 @@
+name: "lead-gen-machine — WAT System"
+
+on:
+  workflow_dispatch:
+    inputs:
+      task_input:
+        description: "JSON ideal customer profile: {industry, company_size, location, keywords, max_results?, min_score?}"
+        required: true
+        type: string
+  schedule:
+    - cron: "0 6 * * 1"  # Weekly on Monday at 06:00 UTC
+  repository_dispatch:
+    types: [lead-gen-machine-run]
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Validate required secrets
+        run: |
+          if [ -z "${{ secrets.ANTHROPIC_API_KEY }}" ]; then
+            echo "::error::ANTHROPIC_API_KEY secret is not set"
+            exit 1
+          fi
+          if [ -z "${{ secrets.BRAVE_API_KEY }}" ]; then
+            echo "::warning::BRAVE_API_KEY not set — web search will be limited"
+          fi
+          echo "Secret validation passed"
+
+      - name: Determine input
+        id: input
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "task_input=${{ github.event.inputs.task_input }}" >> $GITHUB_OUTPUT
+          elif [ "${{ github.event_name }}" = "repository_dispatch" ]; then
+            echo "task_input=${{ github.event.client_payload.task_input }}" >> $GITHUB_OUTPUT
+          else
+            # Scheduled run — use default profile from config if available
+            if [ -f "config/default_profile.json" ]; then
+              echo "task_input=$(cat config/default_profile.json | tr -d '\n')" >> $GITHUB_OUTPUT
+            else
+              echo "::error::No input provided and no default profile found"
+              exit 1
+            fi
+          fi
+
+      - name: Execute system via Claude Code
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          BRAVE_API_KEY: ${{ secrets.BRAVE_API_KEY }}
+          FIRECRAWL_API_KEY: ${{ secrets.FIRECRAWL_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TASK_INPUT: ${{ steps.input.outputs.task_input }}
+        run: |
+          npx @anthropic-ai/claude-code --print \
+            "Read CLAUDE.md for context, then execute workflow.md with input: $TASK_INPUT"
+
+      - name: Commit results
+        run: |
+          git config user.name "WAT System: lead-gen-machine"
+          git config user.email "wat-system@users.noreply.github.com"
+          git add output/ || true
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "leads: $(cat output/run_summary.json 2>/dev/null | python3 -c 'import sys,json; d=json.load(sys.stdin); print(f"{d[\"results\"][\"total_qualified\"]} qualified leads for {d[\"input_profile\"].get(\"industry\",\"unknown\")}")' 2>/dev/null || echo 'new results') $(date +%Y-%m-%d)"
+            git push
+          fi
+
+      - name: Notify on failure
+        if: failure()
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue create \
+            --title "System Run Failed: lead-gen-machine ($(date +%Y-%m-%d))" \
+            --body "System \`lead-gen-machine\` failed during execution.
+
+          **Run**: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          **Trigger**: ${{ github.event_name }}
+
+          Check the logs for details." \
+            --label "bug,system-failure"

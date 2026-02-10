@@ -1,0 +1,108 @@
+name: "marketing-pipeline — WAT System"
+
+on:
+  workflow_dispatch:
+    inputs:
+      task_input:
+        description: "Path to CSV file in repo (e.g., input/leads.csv)"
+        required: true
+        type: string
+  schedule:
+    - cron: "0 9 * * 1"  # Weekly on Monday at 09:00 UTC
+  repository_dispatch:
+    types: [marketing-pipeline-run]
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Validate required secrets
+        run: |
+          errors=""
+          if [ -z "${{ secrets.ANTHROPIC_API_KEY }}" ]; then
+            errors="${errors}ANTHROPIC_API_KEY is not set\n"
+          fi
+          if [ -n "$errors" ]; then
+            echo "::error::Missing required secrets:"
+            echo -e "$errors"
+            exit 1
+          fi
+          echo "Required secrets validated"
+
+      - name: Determine input
+        id: input
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "task_input=${{ github.event.inputs.task_input }}" >> $GITHUB_OUTPUT
+          elif [ "${{ github.event_name }}" = "repository_dispatch" ]; then
+            echo "task_input=${{ github.event.client_payload.task_input }}" >> $GITHUB_OUTPUT
+          elif [ "${{ github.event_name }}" = "schedule" ]; then
+            # For scheduled runs, use the latest CSV in input/
+            LATEST=$(ls -t input/*.csv 2>/dev/null | head -1)
+            if [ -n "$LATEST" ]; then
+              echo "task_input=$LATEST" >> $GITHUB_OUTPUT
+            else
+              echo "::error::No CSV found in input/ for scheduled run"
+              exit 1
+            fi
+          else
+            echo "task_input=" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Execute system via Claude Code
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          APOLLO_API_KEY: ${{ secrets.APOLLO_API_KEY }}
+          HUNTER_API_KEY: ${{ secrets.HUNTER_API_KEY }}
+          BRAVE_API_KEY: ${{ secrets.BRAVE_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TASK_INPUT: ${{ steps.input.outputs.task_input }}
+        run: |
+          npx @anthropic-ai/claude-code --print \
+            "Read CLAUDE.md for context, then execute workflow.md with input: $TASK_INPUT"
+
+      - name: Commit results
+        run: |
+          git config user.name "WAT System: marketing-pipeline"
+          git config user.email "wat-system@users.noreply.github.com"
+          git add output/ || true
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "pipeline: marketing-pipeline results $(date +%Y-%m-%d_%H%M)"
+            git push
+          fi
+
+      - name: Notify on failure
+        if: failure()
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue create \
+            --title "System Run Failed: marketing-pipeline ($(date +%Y-%m-%d))" \
+            --body "System \`marketing-pipeline\` failed during execution.
+
+          **Run**: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          **Trigger**: ${{ github.event_name }}
+
+          Check the logs for details." \
+            --label "bug,system-failure"

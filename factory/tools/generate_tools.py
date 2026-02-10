@@ -1,0 +1,251 @@
+"""
+Generate Tools — Creates Python tool files for a WAT system.
+
+Reads the workflow steps and generates a Python tool for each action step,
+following the tool_template.py pattern. Reuses patterns from tool_catalog.md
+when available.
+
+Inputs:
+    - system_name (str): Name of the system being built
+    - workflow_path (str): Path to the system's workflow.md
+    - design (str): JSON with tool specifications
+    - catalog_path (str): Path to library/tool_catalog.md for reuse
+
+Outputs:
+    - Python .py files in the specified tools directory
+    - requirements.txt listing dependencies
+
+Usage:
+    python generate_tools.py --system-name "my-system" --design tools.json --output-dir tools/
+"""
+
+import argparse
+import json
+import logging
+import os
+import sys
+from pathlib import Path
+from typing import Any
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+)
+logger = logging.getLogger(__name__)
+
+TEMPLATE_DIR = Path(__file__).parent.parent / "templates"
+
+
+def load_tool_template() -> str:
+    """Load the tool template."""
+    template_path = TEMPLATE_DIR / "tool_template.py"
+    with open(template_path, "r", encoding="utf-8") as f:
+        return f.read()
+
+
+def generate_tool_code(tool_spec: dict, template: str) -> str:
+    """
+    Generate Python code for a single tool based on its specification.
+
+    Args:
+        tool_spec: Dictionary with tool name, description, inputs, outputs, logic
+        template: The base tool template
+
+    Returns:
+        Python source code as a string
+    """
+    name = tool_spec.get("name", "unnamed_tool")
+    description = tool_spec.get("description", "A WAT tool.")
+    inputs = tool_spec.get("inputs", [])
+    outputs = tool_spec.get("outputs", [])
+    dependencies = tool_spec.get("dependencies", [])
+    env_vars = tool_spec.get("env_vars", [])
+    logic_steps = tool_spec.get("logic", [])
+
+    # Build docstring
+    input_docs = "\n".join(
+        f"    - {inp['name']} ({inp.get('type', 'str')}): {inp.get('description', '')}"
+        for inp in inputs
+    )
+    output_docs = "\n".join(
+        f"    - {out['name']} ({out.get('type', 'str')}): {out.get('description', '')}"
+        for out in outputs
+    )
+    env_docs = "\n".join(
+        f"    - {ev['name']}: {ev.get('description', '')} ({ev.get('required', 'optional')})"
+        for ev in env_vars
+    )
+
+    # Build imports
+    import_lines = [
+        "import argparse",
+        "import json",
+        "import logging",
+        "import os",
+        "import sys",
+        "from typing import Any",
+    ]
+    for dep in dependencies:
+        if dep.get("import"):
+            import_lines.append(dep["import"])
+
+    # Build argument parser
+    arg_lines = []
+    for inp in inputs:
+        required = inp.get("required", True)
+        default = inp.get("default", None)
+        arg_name = inp["name"].replace("_", "-")
+        if required and default is None:
+            arg_lines.append(
+                f'    parser.add_argument("--{arg_name}", required=True, help="{inp.get("description", "")}")'
+            )
+        else:
+            default_str = f'"{default}"' if isinstance(default, str) else str(default)
+            arg_lines.append(
+                f'    parser.add_argument("--{arg_name}", default={default_str}, help="{inp.get("description", "")}")'
+            )
+
+    # Build logic comments
+    logic_comments = []
+    for i, step in enumerate(logic_steps, 1):
+        logic_comments.append(f"        # Step {i}: {step}")
+
+    # Assemble the tool
+    code = f'''"""
+{name} — {description}
+
+Inputs:
+{input_docs if input_docs else "    None"}
+
+Outputs:
+{output_docs if output_docs else "    None"}
+
+Usage:
+    python {name}.py {" ".join(f"--{inp['name'].replace('_', '-')} <value>" for inp in inputs)}
+
+Environment Variables:
+{env_docs if env_docs else "    None required"}
+"""
+
+{chr(10).join(import_lines)}
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+)
+logger = logging.getLogger(__name__)
+
+
+def main() -> dict[str, Any]:
+    """
+    Main entry point for {name}.
+
+    Returns:
+        dict: Result with status, data, and message.
+    """
+    parser = argparse.ArgumentParser(description="{description}")
+{chr(10).join(arg_lines)}
+    parser.add_argument("--output", default="output.json", help="Output file path")
+    args = parser.parse_args()
+
+    logger.info("Starting {name}")
+
+    try:
+{chr(10).join(logic_comments) if logic_comments else "        # TODO: Implement tool logic"}
+
+        result = {{
+            "status": "success",
+            "data": {{}},
+            "message": "{name} completed successfully",
+        }}
+
+        with open(args.output, "w", encoding="utf-8") as f:
+            json.dump(result, f, indent=2)
+
+        logger.info("Results written to %s", args.output)
+        return result
+
+    except Exception as e:
+        logger.error("{name} failed: %s", e)
+        return {{"status": "error", "data": None, "message": str(e)}}
+
+
+if __name__ == "__main__":
+    result = main()
+    if result["status"] != "success":
+        sys.exit(1)
+'''
+    return code
+
+
+def generate_requirements(all_dependencies: list[str]) -> str:
+    """Generate requirements.txt content from collected dependencies."""
+    # Deduplicate and sort
+    unique_deps = sorted(set(all_dependencies))
+    return "\n".join(unique_deps) + "\n" if unique_deps else ""
+
+
+def main() -> dict[str, Any]:
+    """Generate Python tools for a WAT system."""
+    parser = argparse.ArgumentParser(description="Generate Python tools for a WAT system")
+    parser.add_argument("--system-name", required=True, help="Name of the system")
+    parser.add_argument("--design", required=True, help="Tool design JSON (file path or string)")
+    parser.add_argument("--output-dir", default="tools", help="Output directory for tools")
+    args = parser.parse_args()
+
+    logger.info("Generating tools for system: %s", args.system_name)
+
+    try:
+        # Parse design
+        if os.path.isfile(args.design):
+            with open(args.design, "r", encoding="utf-8") as f:
+                design = json.load(f)
+        else:
+            design = json.loads(args.design)
+
+        template = load_tool_template()
+        tools = design.get("tools", [])
+        output_dir = Path(args.output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        all_deps = []
+        generated = []
+
+        for tool_spec in tools:
+            tool_name = tool_spec.get("name", "unnamed_tool")
+            logger.info("Generating tool: %s", tool_name)
+
+            code = generate_tool_code(tool_spec, template)
+            tool_path = output_dir / f"{tool_name}.py"
+            with open(tool_path, "w", encoding="utf-8") as f:
+                f.write(code)
+
+            generated.append(str(tool_path))
+
+            # Collect dependencies
+            for dep in tool_spec.get("dependencies", []):
+                if dep.get("pip"):
+                    all_deps.append(dep["pip"])
+
+        # Write requirements.txt
+        req_content = generate_requirements(all_deps)
+        req_path = output_dir.parent / "requirements.txt"
+        with open(req_path, "w", encoding="utf-8") as f:
+            f.write(req_content)
+
+        logger.info("Generated %d tools, requirements.txt written", len(generated))
+        return {
+            "status": "success",
+            "tools_generated": generated,
+            "requirements": str(req_path),
+        }
+
+    except Exception as e:
+        logger.error("Failed to generate tools: %s", e)
+        return {"status": "error", "data": None, "message": str(e)}
+
+
+if __name__ == "__main__":
+    result = main()
+    if result["status"] != "success":
+        sys.exit(1)

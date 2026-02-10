@@ -1,0 +1,97 @@
+name: "company-profiler — WAT System"
+
+on:
+  workflow_dispatch:
+    inputs:
+      company_url:
+        description: "Company website URL to profile (e.g., https://example.com)"
+        required: true
+        type: string
+  schedule:
+    - cron: "0 9 * * 1"  # Weekly: Monday at 9 AM UTC — re-profile tracked companies
+  repository_dispatch:
+    types: [company-profiler-run]
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  profile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Determine input
+        id: input
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "company_url=${{ github.event.inputs.company_url }}" >> $GITHUB_OUTPUT
+            echo "mode=single" >> $GITHUB_OUTPUT
+          elif [ "${{ github.event_name }}" = "repository_dispatch" ]; then
+            echo "company_url=${{ github.event.client_payload.company_url }}" >> $GITHUB_OUTPUT
+            echo "mode=single" >> $GITHUB_OUTPUT
+          elif [ "${{ github.event_name }}" = "schedule" ]; then
+            echo "company_url=" >> $GITHUB_OUTPUT
+            echo "mode=batch" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Execute via Claude Code
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          FIRECRAWL_API_KEY: ${{ secrets.FIRECRAWL_API_KEY }}
+          BRAVE_SEARCH_API_KEY: ${{ secrets.BRAVE_SEARCH_API_KEY }}
+          COMPANY_URL: ${{ steps.input.outputs.company_url }}
+          RUN_MODE: ${{ steps.input.outputs.mode }}
+        run: |
+          npx @anthropic-ai/claude-code --print \
+            "Read CLAUDE.md for context. Execute workflow.md. \
+             Company URL: $COMPANY_URL \
+             Mode: $RUN_MODE \
+             If batch mode, read data/tracked_companies.json for the list of URLs. \
+             Write results to output/"
+
+      - name: Commit results
+        run: |
+          git config user.name "WAT System: company-profiler"
+          git config user.email "wat-system@users.noreply.github.com"
+          git add output/ || true
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "run: company-profiler results $(date +%Y-%m-%d_%H%M)
+
+          URL: ${{ steps.input.outputs.company_url }}
+          Mode: ${{ steps.input.outputs.mode }}"
+            git push
+          fi
+
+      - name: Notify on failure
+        if: failure()
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue create \
+            --title "Company Profiler Failed ($(date +%Y-%m-%d))" \
+            --body "company-profiler failed during execution.
+
+          **URL**: ${{ steps.input.outputs.company_url }}
+          **Mode**: ${{ steps.input.outputs.mode }}
+          **Run**: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+          Check the logs for details." \
+            --label "bug,system-failure"

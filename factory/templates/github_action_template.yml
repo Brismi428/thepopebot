@@ -1,0 +1,94 @@
+name: "{system_name} — WAT System"
+
+on:
+  workflow_dispatch:
+    inputs:
+      task_input:
+        description: "{Description of the input this system expects}"
+        required: true
+        type: string
+  # schedule:
+  #   - cron: "{cron_expression}"  # Uncomment and configure for scheduled runs
+  repository_dispatch:
+    types: ["{system_name}-run"]
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Validate required secrets
+        run: |
+          # Add checks for each required secret
+          # Example:
+          # if [ -z "${{ secrets.REQUIRED_API_KEY }}" ]; then
+          #   echo "::error::REQUIRED_API_KEY secret is not set"
+          #   exit 1
+          # fi
+          echo "Secret validation passed"
+
+      - name: Determine input
+        id: input
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "task_input=${{ github.event.inputs.task_input }}" >> $GITHUB_OUTPUT
+          elif [ "${{ github.event_name }}" = "repository_dispatch" ]; then
+            echo "task_input=${{ github.event.client_payload.task_input }}" >> $GITHUB_OUTPUT
+          else
+            echo "task_input={}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Execute system via Claude Code
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TASK_INPUT: ${{ steps.input.outputs.task_input }}
+          # {Add system-specific secret references here}
+        run: |
+          npx @anthropic-ai/claude-code --print \
+            "Read CLAUDE.md for context, then execute workflow.md with input: $TASK_INPUT"
+
+      - name: Commit results
+        run: |
+          git config user.name "WAT System: {system_name}"
+          git config user.email "wat-system@users.noreply.github.com"
+          git add output/ || true
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "run: {system_name} results $(date +%Y-%m-%d_%H%M)"
+            git push
+          fi
+
+      - name: Notify on failure
+        if: failure()
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue create \
+            --title "System Run Failed: {system_name} ($(date +%Y-%m-%d))" \
+            --body "System \`{system_name}\` failed during execution.
+
+          **Run**: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          **Trigger**: ${{ github.event_name }}
+
+          Check the logs for details." \
+            --label "bug,system-failure"

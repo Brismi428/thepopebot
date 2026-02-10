@@ -6,7 +6,7 @@ secrets.json
 *.pem
 *.key
 
-.claude/*
+.claude/settings.local.json
 
 # Pi system prompt (generated at runtime from SOUL.md)
 .pi/SYSTEM.md

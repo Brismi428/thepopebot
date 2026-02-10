@@ -1,0 +1,342 @@
+{
+  "crm": {
+    "name": "CRM Base",
+    "description": "Customer relationship management with contacts, companies, and deals",
+    "tables": [
+      {
+        "name": "Contacts",
+        "fields": [
+          {"name": "Name", "type": "singleLineText"},
+          {"name": "Email", "type": "email"},
+          {"name": "Phone", "type": "phoneNumber"},
+          {"name": "Company", "type": "multipleRecordLinks", "options": {"linkedTableId": "Companies"}},
+          {"name": "Status", "type": "singleSelect", "options": {
+            "choices": [
+              {"name": "Lead", "color": "blueLight2"},
+              {"name": "Prospect", "color": "yellowLight2"},
+              {"name": "Customer", "color": "greenLight2"},
+              {"name": "Churned", "color": "redLight2"}
+            ]
+          }},
+          {"name": "Source", "type": "singleSelect", "options": {
+            "choices": [
+              {"name": "Website"},
+              {"name": "Referral"},
+              {"name": "Social"},
+              {"name": "Cold Outreach"},
+              {"name": "Event"}
+            ]
+          }},
+          {"name": "Tags", "type": "multipleSelects", "options": {
+            "choices": [
+              {"name": "VIP"},
+              {"name": "Decision Maker"},
+              {"name": "Technical"},
+              {"name": "Follow Up"}
+            ]
+          }},
+          {"name": "Notes", "type": "multilineText"},
+          {"name": "Last Contact", "type": "date"},
+          {"name": "Created", "type": "createdTime"}
+        ]
+      },
+      {
+        "name": "Companies",
+        "fields": [
+          {"name": "Name", "type": "singleLineText"},
+          {"name": "Website", "type": "url"},
+          {"name": "Industry", "type": "singleSelect", "options": {
+            "choices": [
+              {"name": "Technology"},
+              {"name": "Finance"},
+              {"name": "Healthcare"},
+              {"name": "Retail"},
+              {"name": "Manufacturing"},
+              {"name": "Other"}
+            ]
+          }},
+          {"name": "Size", "type": "singleSelect", "options": {
+            "choices": [
+              {"name": "1-10"},
+              {"name": "11-50"},
+              {"name": "51-200"},
+              {"name": "201-1000"},
+              {"name": "1000+"}
+            ]
+          }},
+          {"name": "Contacts", "type": "multipleRecordLinks", "options": {"linkedTableId": "Contacts"}},
+          {"name": "Deals", "type": "multipleRecordLinks", "options": {"linkedTableId": "Deals"}},
+          {"name": "Annual Revenue", "type": "currency", "options": {"precision": 0, "symbol": "$"}},
+          {"name": "Address", "type": "multilineText"},
+          {"name": "Created", "type": "createdTime"}
+        ]
+      },
+      {
+        "name": "Deals",
+        "fields": [
+          {"name": "Name", "type": "singleLineText"},
+          {"name": "Company", "type": "multipleRecordLinks", "options": {"linkedTableId": "Companies"}},
+          {"name": "Contact", "type": "multipleRecordLinks", "options": {"linkedTableId": "Contacts"}},
+          {"name": "Value", "type": "currency", "options": {"precision": 2, "symbol": "$"}},
+          {"name": "Stage", "type": "singleSelect", "options": {
+            "choices": [
+              {"name": "Discovery", "color": "blueLight2"},
+              {"name": "Proposal", "color": "cyanLight2"},
+              {"name": "Negotiation", "color": "yellowLight2"},
+              {"name": "Closed Won", "color": "greenLight2"},
+              {"name": "Closed Lost", "color": "redLight2"}
+            ]
+          }},
+          {"name": "Probability", "type": "percent", "options": {"precision": 0}},
+          {"name": "Expected Close", "type": "date"},
+          {"name": "Notes", "type": "multilineText"},
+          {"name": "Created", "type": "createdTime"}
+        ]
+      },
+      {
+        "name": "Activities",
+        "fields": [
+          {"name": "Type", "type": "singleSelect", "options": {
+            "choices": [
+              {"name": "Call"},
+              {"name": "Email"},
+              {"name": "Meeting"},
+              {"name": "Task"},
+              {"name": "Note"}
+            ]
+          }},
+          {"name": "Subject", "type": "singleLineText"},
+          {"name": "Contact", "type": "multipleRecordLinks", "options": {"linkedTableId": "Contacts"}},
+          {"name": "Deal", "type": "multipleRecordLinks", "options": {"linkedTableId": "Deals"}},
+          {"name": "Date", "type": "dateTime"},
+          {"name": "Description", "type": "multilineText"},
+          {"name": "Completed", "type": "checkbox"},
+          {"name": "Created", "type": "createdTime"}
+        ]
+      }
+    ]
+  },
+  "project_management": {
+    "name": "Project Management",
+    "description": "Track projects, tasks, and team members",
+    "tables": [
+      {
+        "name": "Projects",
+        "fields": [
+          {"name": "Name", "type": "singleLineText"},
+          {"name": "Description", "type": "multilineText"},
+          {"name": "Status", "type": "singleSelect", "options": {
+            "choices": [
+              {"name": "Planning", "color": "blueLight2"},
+              {"name": "In Progress", "color": "yellowLight2"},
+              {"name": "On Hold", "color": "orangeLight2"},
+              {"name": "Completed", "color": "greenLight2"},
+              {"name": "Cancelled", "color": "redLight2"}
+            ]
+          }},
+          {"name": "Priority", "type": "singleSelect", "options": {
+            "choices": [
+              {"name": "Low", "color": "grayLight2"},
+              {"name": "Medium", "color": "yellowLight2"},
+              {"name": "High", "color": "orangeLight2"},
+              {"name": "Critical", "color": "redLight2"}
+            ]
+          }},
+          {"name": "Owner", "type": "multipleRecordLinks", "options": {"linkedTableId": "Team"}},
+          {"name": "Start Date", "type": "date"},
+          {"name": "Due Date", "type": "date"},
+          {"name": "Tasks", "type": "multipleRecordLinks", "options": {"linkedTableId": "Tasks"}},
+          {"name": "Progress", "type": "percent", "options": {"precision": 0}},
+          {"name": "Budget", "type": "currency", "options": {"precision": 0, "symbol": "$"}},
+          {"name": "Created", "type": "createdTime"}
+        ]
+      },
+      {
+        "name": "Tasks",
+        "fields": [
+          {"name": "Name", "type": "singleLineText"},
+          {"name": "Project", "type": "multipleRecordLinks", "options": {"linkedTableId": "Projects"}},
+          {"name": "Assignee", "type": "multipleRecordLinks", "options": {"linkedTableId": "Team"}},
+          {"name": "Status", "type": "singleSelect", "options": {
+            "choices": [
+              {"name": "To Do", "color": "grayLight2"},
+              {"name": "In Progress", "color": "blueLight2"},
+              {"name": "In Review", "color": "purpleLight2"},
+              {"name": "Done", "color": "greenLight2"},
+              {"name": "Blocked", "color": "redLight2"}
+            ]
+          }},
+          {"name": "Priority", "type": "singleSelect", "options": {
+            "choices": [
+              {"name": "Low"},
+              {"name": "Medium"},
+              {"name": "High"},
+              {"name": "Urgent"}
+            ]
+          }},
+          {"name": "Due Date", "type": "date"},
+          {"name": "Estimated Hours", "type": "number", "options": {"precision": 1}},
+          {"name": "Actual Hours", "type": "number", "options": {"precision": 1}},
+          {"name": "Description", "type": "multilineText"},
+          {"name": "Attachments", "type": "multipleAttachments"},
+          {"name": "Created", "type": "createdTime"}
+        ]
+      },
+      {
+        "name": "Team",
+        "fields": [
+          {"name": "Name", "type": "singleLineText"},
+          {"name": "Email", "type": "email"},
+          {"name": "Role", "type": "singleSelect", "options": {
+            "choices": [
+              {"name": "Project Manager"},
+              {"name": "Developer"},
+              {"name": "Designer"},
+              {"name": "QA"},
+              {"name": "DevOps"}
+            ]
+          }},
+          {"name": "Projects", "type": "multipleRecordLinks", "options": {"linkedTableId": "Projects"}},
+          {"name": "Tasks", "type": "multipleRecordLinks", "options": {"linkedTableId": "Tasks"}},
+          {"name": "Avatar", "type": "multipleAttachments"}
+        ]
+      }
+    ]
+  },
+  "content_calendar": {
+    "name": "Content Calendar",
+    "description": "Plan and track content creation",
+    "tables": [
+      {
+        "name": "Content",
+        "fields": [
+          {"name": "Title", "type": "singleLineText"},
+          {"name": "Type", "type": "singleSelect", "options": {
+            "choices": [
+              {"name": "Blog Post"},
+              {"name": "Social Media"},
+              {"name": "Video"},
+              {"name": "Podcast"},
+              {"name": "Newsletter"},
+              {"name": "Case Study"}
+            ]
+          }},
+          {"name": "Status", "type": "singleSelect", "options": {
+            "choices": [
+              {"name": "Idea", "color": "grayLight2"},
+              {"name": "Writing", "color": "blueLight2"},
+              {"name": "Editing", "color": "yellowLight2"},
+              {"name": "Ready", "color": "cyanLight2"},
+              {"name": "Published", "color": "greenLight2"}
+            ]
+          }},
+          {"name": "Author", "type": "singleLineText"},
+          {"name": "Publish Date", "type": "date"},
+          {"name": "Platform", "type": "multipleSelects", "options": {
+            "choices": [
+              {"name": "Website"},
+              {"name": "LinkedIn"},
+              {"name": "Twitter"},
+              {"name": "Instagram"},
+              {"name": "YouTube"},
+              {"name": "Newsletter"}
+            ]
+          }},
+          {"name": "Topic", "type": "multipleRecordLinks", "options": {"linkedTableId": "Topics"}},
+          {"name": "Brief", "type": "multilineText"},
+          {"name": "URL", "type": "url"},
+          {"name": "Assets", "type": "multipleAttachments"},
+          {"name": "Created", "type": "createdTime"}
+        ]
+      },
+      {
+        "name": "Topics",
+        "fields": [
+          {"name": "Name", "type": "singleLineText"},
+          {"name": "Category", "type": "singleSelect", "options": {
+            "choices": [
+              {"name": "Product"},
+              {"name": "Industry"},
+              {"name": "How-To"},
+              {"name": "Thought Leadership"},
+              {"name": "Customer Story"}
+            ]
+          }},
+          {"name": "Keywords", "type": "multilineText"},
+          {"name": "Content", "type": "multipleRecordLinks", "options": {"linkedTableId": "Content"}}
+        ]
+      }
+    ]
+  },
+  "inventory": {
+    "name": "Inventory Tracker",
+    "description": "Track products, stock levels, and orders",
+    "tables": [
+      {
+        "name": "Products",
+        "fields": [
+          {"name": "Name", "type": "singleLineText"},
+          {"name": "SKU", "type": "singleLineText"},
+          {"name": "Category", "type": "singleSelect", "options": {
+            "choices": [
+              {"name": "Electronics"},
+              {"name": "Clothing"},
+              {"name": "Food"},
+              {"name": "Office"},
+              {"name": "Other"}
+            ]
+          }},
+          {"name": "Description", "type": "multilineText"},
+          {"name": "Price", "type": "currency", "options": {"precision": 2, "symbol": "$"}},
+          {"name": "Cost", "type": "currency", "options": {"precision": 2, "symbol": "$"}},
+          {"name": "Stock", "type": "number", "options": {"precision": 0}},
+          {"name": "Reorder Point", "type": "number", "options": {"precision": 0}},
+          {"name": "Supplier", "type": "multipleRecordLinks", "options": {"linkedTableId": "Suppliers"}},
+          {"name": "Image", "type": "multipleAttachments"},
+          {"name": "Active", "type": "checkbox"},
+          {"name": "Created", "type": "createdTime"}
+        ]
+      },
+      {
+        "name": "Orders",
+        "fields": [
+          {"name": "Order Number", "type": "autoNumber"},
+          {"name": "Product", "type": "multipleRecordLinks", "options": {"linkedTableId": "Products"}},
+          {"name": "Quantity", "type": "number", "options": {"precision": 0}},
+          {"name": "Type", "type": "singleSelect", "options": {
+            "choices": [
+              {"name": "Purchase", "color": "blueLight2"},
+              {"name": "Sale", "color": "greenLight2"},
+              {"name": "Return", "color": "redLight2"}
+            ]
+          }},
+          {"name": "Status", "type": "singleSelect", "options": {
+            "choices": [
+              {"name": "Pending"},
+              {"name": "Processing"},
+              {"name": "Shipped"},
+              {"name": "Delivered"},
+              {"name": "Cancelled"}
+            ]
+          }},
+          {"name": "Total", "type": "currency", "options": {"precision": 2, "symbol": "$"}},
+          {"name": "Notes", "type": "multilineText"},
+          {"name": "Date", "type": "date"},
+          {"name": "Created", "type": "createdTime"}
+        ]
+      },
+      {
+        "name": "Suppliers",
+        "fields": [
+          {"name": "Name", "type": "singleLineText"},
+          {"name": "Contact", "type": "singleLineText"},
+          {"name": "Email", "type": "email"},
+          {"name": "Phone", "type": "phoneNumber"},
+          {"name": "Website", "type": "url"},
+          {"name": "Products", "type": "multipleRecordLinks", "options": {"linkedTableId": "Products"}},
+          {"name": "Notes", "type": "multilineText"}
+        ]
+      }
+    ]
+  }
+}
