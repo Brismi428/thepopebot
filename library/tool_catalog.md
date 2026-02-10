@@ -2317,4 +2317,31 @@ All tools expect secrets via environment variables. Never hard-code credentials.
 
 ---
 
+## Uptime Monitoring (from website-uptime-monitor build)
+
+### `check_url`
+
+**Description:** Performs an HTTP GET request to a target URL, measures response time, determines up/down status based on status code, and appends the result to a CSV log file. Designed for autonomous scheduled monitoring with Git-based audit trail.
+
+| Field | Detail |
+|---|---|
+| **Input** | `url: str`, `timeout: int = 10`, `csv_path: str = "logs/uptime_log.csv"` |
+| **Output** | `dict` with timestamp, status_code, response_time_ms, is_up, csv_updated |
+| **Key Dependencies** | `requests` |
+| **MCP Alternative** | Fetch MCP (but direct `requests` is simpler for single GET + timeout) |
+
+**Exit code signaling**: Returns exit code 0 if up, 1 if down -- allowing GitHub Actions to show workflow status at-a-glance.
+
+**CSV schema**: timestamp (ISO 8601 UTC), url, status_code (int, 0 if timeout/error), response_time_ms (float), is_up (boolean, True if status_code < 400).
+
+**Failure handling**: All HTTP exceptions (Timeout, ConnectionError, RequestException) are caught and recorded as "down" status with status_code=0. No exception crashes the tool - every check produces a CSV entry.
+
+**Pattern notes**: This is the minimal viable monitoring tool. No detection logic, no alerting, just raw data collection. The tool itself is stateless - all state lives in the Git-committed CSV file. Suitable for systems where simplicity and zero external dependencies are priorities.
+
+**Concurrency**: The tool itself is concurrency-safe (CSV opens in append mode), but the workflow should use GitHub Actions `concurrency` setting to prevent simultaneous runs that could cause git push conflicts.
+
+**Extension points**: Add auth headers for authenticated endpoints, add retry logic for transient failures, add response body validation (regex checks), add multiple URLs via loop or matrix strategy.
+
+---
+
 > **Next steps:** Each tool pattern above can be instantiated by the factory's `assemble_workflow` step. To add a new tool, copy any pattern above, implement `main()`, and register it in the factory's tool registry.

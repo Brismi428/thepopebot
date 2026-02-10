@@ -1,0 +1,223 @@
+name: Agent HQ
+
+on:
+  issues:
+    types: [opened, labeled]
+  issue_comment:
+    types: [created]
+
+jobs:
+  agent:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    
+    # Only run if:
+    # 1. Issue has the "agent-task" label, OR
+    # 2. Issue/comment mentions @claude
+    if: |
+      (github.event.issue.labels && contains(github.event.issue.labels.*.name, 'agent-task')) ||
+      contains(github.event.issue.body, '@claude') ||
+      contains(github.event.comment.body, '@claude')
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+      
+      - name: Install Claude CLI
+        run: |
+          npm install -g @anthropic-ai/claude-cli
+      
+      - name: Parse task from issue
+        id: parse
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.payload.issue;
+            const comment = context.payload.comment;
+            
+            // Extract task from issue body or comment
+            let taskBody = issue.body;
+            if (comment) {
+              taskBody = comment.body;
+            }
+            
+            // Parse task instructions
+            // Expected format:
+            // @claude [task description]
+            // or just the issue body if labeled "agent-task"
+            
+            let task = taskBody;
+            if (taskBody.includes('@claude')) {
+              task = taskBody.split('@claude')[1].trim();
+            }
+            
+            // Set outputs
+            core.setOutput('task', task);
+            core.setOutput('issue_number', issue.number);
+            core.setOutput('issue_title', issue.title);
+      
+      - name: Comment on issue (starting)
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: ${{ steps.parse.outputs.issue_number }},
+              body: '🤖 Starting task execution...\n\nI\'ll parse your request and execute the appropriate workflow.'
+            });
+      
+      - name: Create task branch
+        id: branch
+        run: |
+          BRANCH_NAME="agent/issue-${{ steps.parse.outputs.issue_number }}"
+          echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
+          
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          git checkout -b "$BRANCH_NAME"
+      
+      - name: Execute task with Claude
+        id: execute
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          TASK: ${{ steps.parse.outputs.task }}
+        run: |
+          # Create a task file for Claude
+          cat > /tmp/agent_task.md << 'EOF'
+          # Agent Task from Issue #${{ steps.parse.outputs.issue_number }}
+          
+          ## Issue Title
+          ${{ steps.parse.outputs.issue_title }}
+          
+          ## Task Instructions
+          ${{ steps.parse.outputs.task }}
+          
+          ## System Context
+          You are the Website Uptime Monitor agent. Your capabilities:
+          
+          1. **Manual uptime check** - Run a one-time check of any URL
+          2. **Configure monitoring** - Update MONITOR_URL and TIMEOUT_SECONDS settings
+          3. **Analyze logs** - Review logs/uptime_log.csv and provide insights
+          4. **Report generation** - Summarize uptime statistics from the CSV
+          
+          ## Available Tools
+          - `tools/check_url.py` - Execute a URL check
+          - `logs/uptime_log.csv` - Historical uptime data
+          
+          ## Instructions
+          1. Read CLAUDE.md and workflow.md to understand the system
+          2. Parse the task request and determine which capability is needed
+          3. Execute the appropriate action
+          4. Document your work in a summary
+          5. Commit any changes
+          
+          ## Deliverable
+          Create a summary of what you did and commit it to `agent_output/issue_${{ steps.parse.outputs.issue_number }}_summary.md`
+          EOF
+          
+          # Run Claude with the task
+          claude --no-web /tmp/agent_task.md
+      
+      - name: Commit results
+        run: |
+          git add -A
+          
+          if [[ -n $(git status --porcelain) ]]; then
+            git commit -m "Agent task: Complete issue #${{ steps.parse.outputs.issue_number }}"
+            git push -u origin "${{ steps.branch.outputs.branch_name }}"
+          else
+            echo "No changes to commit"
+          fi
+      
+      - name: Create Pull Request
+        id: pr
+        if: success()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: pr } = await github.rest.pulls.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `Agent task: Issue #${{ steps.parse.outputs.issue_number }}`,
+              head: '${{ steps.branch.outputs.branch_name }}',
+              base: 'main',
+              body: `## Agent Task Completed
+              
+              Resolves #${{ steps.parse.outputs.issue_number }}
+              
+              ### Task
+              ${{ steps.parse.outputs.task }}
+              
+              ### Changes
+              This PR contains the results of the agent's autonomous execution.
+              Please review the changes before merging.
+              
+              ### Files Changed
+              - See the commit history for details
+              
+              ---
+              
+              🤖 Generated by GitHub Agent HQ`,
+              draft: true
+            });
+            
+            core.setOutput('pr_number', pr.number);
+            core.setOutput('pr_url', pr.html_url);
+            
+            return pr.number;
+      
+      - name: Comment on issue (completed)
+        if: success()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: ${{ steps.parse.outputs.issue_number }},
+              body: `✅ Task completed!
+              
+              I've created a draft PR with the results: #${{ steps.pr.outputs.pr_number }}
+              
+              Please review the changes before merging.`
+            });
+      
+      - name: Comment on issue (failed)
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: ${{ steps.parse.outputs.issue_number }},
+              body: `❌ Task execution failed.
+              
+              Please check the [workflow run logs](${context.payload.repository.html_url}/actions/runs/${context.runId}) for details.
+              
+              You may need to:
+              1. Clarify the task instructions
+              2. Check that required secrets are configured
+              3. Manually execute the task`
+            });
+            
+            github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: ${{ steps.parse.outputs.issue_number }},
+              labels: ['agent-failed']
+            });
