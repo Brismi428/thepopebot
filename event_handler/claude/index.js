@@ -110,8 +110,12 @@ async function chat(userMessage, history, toolDefinitions, toolExecutors) {
       }
     }
 
-    // If no client-side tools to execute, we're done
+    // If no client-side tools to execute (e.g., only web_search which runs server-side),
+    // strip tool_use blocks from the last assistant message so history doesn't contain
+    // orphaned tool_use without a matching tool_result
     if (toolResults.length === 0) {
+      const lastMsg = messages[messages.length - 1];
+      lastMsg.content = lastMsg.content.filter((block) => block.type !== 'tool_use');
       break;
     }
 
