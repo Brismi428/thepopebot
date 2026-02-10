@@ -577,3 +577,16 @@ Patterns are building blocks. Here are common compositions:
 - **Content generation pattern**: Outreach and nurture are independent post-segmentation, making them natural Agent Teams candidates. Outreach is per-lead personalized; nurture is aggregate-informed.
 - **API fallback chain**: Apollo > Hunter > Brave > Claude > HTTP scraping. Four-level fallback with clear degradation at each level.
 - **CSV-in/CSV-out**: Accepts CSV input (compatible with lead-gen-machine output), produces segmented CSVs + markdown email sequences. Easy to chain systems.
+
+### Website Uptime Monitor (website-uptime-monitor)
+- **Pattern**: Monitor > Log (simplified from Monitor > Detect > Alert)
+- **Flow**: Check URL via HTTP GET > Measure response time > Determine up/down status > Append to CSV > Commit to Git
+- **Key insight**: Simplest possible monitoring system - no detection logic, no alerting, just raw data collection. Every check produces a log entry regardless of status. Git history IS the audit trail.
+- **No MCPs needed**: Direct Python `requests` library is simpler and more reliable than Fetch MCP for a single GET request. CSV append uses stdlib. Zero external dependencies beyond GitHub Actions.
+- **Exit code signaling**: Tool exits 0 if up, 1 if down - GitHub Actions UI shows workflow as "failed" when site is down, providing at-a-glance status without additional alerting logic.
+- **Concurrency handling**: GitHub Actions `concurrency` setting prevents simultaneous runs. Git push includes retry with rebase to handle rare concurrent commits.
+- **CSV as database**: Append-only CSV committed to Git provides versioned, auditable, queryable dataset. No external database needed. Git handles MB-scale data easily.
+- **Cron variance accepted**: GitHub Actions cron has ±5 minute variance - documented as expected behavior rather than a bug to fix.
+- **Three execution paths**: (1) Scheduled cron (primary), (2) Manual dispatch (testing), (3) Local CLI (development). Agent HQ (4) optional for issue-driven tasks.
+- **Cost awareness**: ~1,440 GitHub Actions minutes/month for 5-minute checks. Fits within free tier (2,000/month private, unlimited public).
+- **Extensibility points**: Add alerting by extending monitor.yml (Slack webhook, GitHub Issue). Add multiple URLs via matrix strategy or separate workflows. Add authentication via tool arguments + GitHub Secrets.
