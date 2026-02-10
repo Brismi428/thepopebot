@@ -1,6 +1,119 @@
-# Daily Financial Report
+# Daily Financial Report — February 10, 2026
 
-> No report has been generated yet. The first report will be created at the next scheduled run (6:00 AM Pacific, weekdays).
+> Generated at 19:00 UTC | Pre-market briefing
+
+---
+
+## ⚠️ Data Unavailable
+
+**API Authentication Error:** Unable to retrieve market data. The Brave Search API key is invalid or expired.
+
+**Status:** All market data sections below could not be populated with current information.
+
+**Action Required:** A valid Brave Search API subscription key needs to be configured in LLM_SECRETS for this automated report to function.
+
+---
+
+## 📊 Major Indices
+
+| Index | Last Close | Change | % Change |
+|-------|-----------|--------|----------|
+| S&P 500 | Data unavailable | — | — |
+| Dow Jones | Data unavailable | — | — |
+| Nasdaq Composite | Data unavailable | — | — |
+| Russell 2000 | Data unavailable | — | — |
+
+**Pre-market Futures:**
+- Data unavailable due to API authentication failure
+
+---
+
+## 🌍 Global Markets
+
+### Asia-Pacific
+- Data unavailable due to API authentication failure
+
+### Europe
+- Data unavailable due to API authentication failure
+
+---
+
+## 📈 Bonds & Rates
+
+- **10-Year Treasury Yield:** Data unavailable
+- **2-Year Treasury Yield:** Data unavailable
+- **2s/10s Spread:** Data unavailable
+- **Fed Funds Rate:** Data unavailable
+
+---
+
+## 🛢️ Commodities
+
+| Commodity | Price | Change |
+|-----------|-------|--------|
+| WTI Crude Oil | Data unavailable | — |
+| Gold | Data unavailable | — |
+| Silver | Data unavailable | — |
+| Natural Gas | Data unavailable | — |
+
+---
+
+## 💱 Currencies
+
+- **DXY (Dollar Index):** Data unavailable
+- **EUR/USD:** Data unavailable
+- **USD/JPY:** Data unavailable
+- **GBP/USD:** Data unavailable
+
+---
+
+## 📰 Key Headlines
+
+1. Unable to retrieve current headlines - API authentication failed
+2. Search API requires valid Brave Search subscription key
+3. Current BRAVE_API_KEY value is a placeholder
+4. Configure valid API key in repository secrets under LLM_SECRETS
+5. Once configured, this automated report will populate with live market data
+
+---
+
+## 🏭 Sector Watch
+
+- **Top Performing:** Data unavailable
+- **Worst Performing:** Data unavailable
+- **Notable Movers:** Data unavailable
+
+---
+
+## 📅 Economic Calendar (Today)
+
+| Time (ET) | Event | Consensus | Prior |
+|-----------|-------|-----------|-------|
+| — | Data unavailable | — | — |
+
+---
+
+## 🔍 Analysis & Outlook
+
+**Report Generation Failed:** This report could not be generated with current market data due to an invalid Brave Search API subscription token. 
+
+**Error Details:** HTTP 422 - SUBSCRIPTION_TOKEN_INVALID. The Brave Search API key configured in this system is set to "YOUR_BRAVE_KEY_HERE" which is a placeholder value, not a valid subscription key.
+
+**Resolution Steps:**
+1. Create a Brave Search API account at https://api-dashboard.search.brave.com/register
+2. Subscribe to the "Free AI" plan (credit card required but no charge)
+3. Generate an API key
+4. Add the valid key to repository secrets as part of LLM_SECRETS
+5. Re-run this financial advisor job
+
+Once properly configured, this automated report will provide:
+- Real-time market data from major indices
+- Global market updates from Asia, Europe, and Americas
+- Treasury yields and interest rate information
+- Commodities and currency movements
+- Top financial headlines from the past 24 hours
+- Sector performance analysis
+- Today's economic calendar events
 
 ---
 
