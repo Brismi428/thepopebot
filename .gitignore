@@ -34,3 +34,8 @@ Thumbs.db
 tmp/
 temp/
 .tmp/
+
+# Runtime artifacts from WAT systems
+systems/*/output/
+systems/*/data/
+systems/*/logs/

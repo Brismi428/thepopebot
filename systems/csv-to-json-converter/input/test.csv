@@ -1,0 +1,4 @@
+name,age,email,active,signup_date
+John Smith,34,john@example.com,true,2024-01-15
+Jane Doe,28,jane@example.com,false,2024-03-22
+Bob Wilson,45,bob@example.com,true,2023-11-08
