@@ -590,3 +590,19 @@ Patterns are building blocks. Here are common compositions:
 - **Three execution paths**: (1) Scheduled cron (primary), (2) Manual dispatch (testing), (3) Local CLI (development). Agent HQ (4) optional for issue-driven tasks.
 - **Cost awareness**: ~1,440 GitHub Actions minutes/month for 5-minute checks. Fits within free tier (2,000/month private, unlimited public).
 - **Extensibility points**: Add alerting by extending monitor.yml (Slack webhook, GitHub Issue). Add multiple URLs via matrix strategy or separate workflows. Add authentication via tool arguments + GitHub Secrets.
+
+### CSV-to-JSON Converter (csv-to-json-converter)
+- **Pattern**: Collect > Transform > Store
+- **Flow**: Collect CSV files > Analyze structure > Parse CSV > Infer types > Validate data > Convert to JSON/JSONL > Generate reports > Commit
+- **Key insight**: Multi-phase transformation with specialist subagents. Each phase (analyze, infer, validate, write) has a dedicated subagent with focused responsibilities. Main agent orchestrates the pipeline.
+- **Subagent architecture**: Four specialist subagents (csv-analyzer, type-inference-specialist, data-validator, json-writer) with minimal tool access. Subagents are the DEFAULT delegation mechanism, not Agent Teams.
+- **Type inference pattern**: Statistical analysis with confidence scoring (80% threshold). Detects int, float, boolean, datetime, string. Falls back to string for ambiguous columns. Handles 10+ null value representations.
+- **Encoding detection**: chardet for automatic encoding detection with UTF-8 fallback. Strips BOM (byte order mark) automatically. Supports UTF-8, Latin-1, Windows-1252, etc.
+- **Ragged row handling**: Pad short rows with null, truncate long rows with warning. Log all issues in validation report but continue processing (graceful degradation).
+- **Validation without failure**: Validator NEVER raises exceptions. Always returns a report. Strict mode controls whether issues halt the pipeline, but validation itself is fail-safe.
+- **JSONL streaming**: For large files (1M+ rows), JSONL format writes one record at a time. No array wrapper. Memory-efficient for multi-GB datasets.
+- **Batch processing modes**: Sequential (1-2 files) or parallel (3+ files with Agent Teams). Parallel is 5x faster wall time but same token cost. Always has sequential fallback.
+- **Three execution paths**: (1) CLI for local development, (2) GitHub Actions for production, (3) Agent HQ for issue-driven tasks. All three produce identical output.
+- **Metadata reporting**: run_summary.json (machine-readable) + validation_report.md (human-readable). Includes per-file stats, type inference results, validation issues, recommendations.
+- **No secrets required**: Uses only stdlib (csv, json, pathlib) + chardet + python-dateutil. No external APIs. Pure data transformation pipeline.
+- **Git commit discipline**: Stage ONLY output files (never `git add -A`). Commit message includes file count, row count, timestamp. Output directory is parameterized.
