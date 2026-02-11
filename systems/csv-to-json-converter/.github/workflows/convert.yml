@@ -1,0 +1,202 @@
+name: CSV to JSON Converter
+
+on:
+  workflow_dispatch:
+    inputs:
+      csv_files:
+        description: 'CSV file paths (comma-separated) or directory path'
+        required: true
+        default: 'input/'
+      output_format:
+        description: 'Output format: json or jsonl'
+        required: false
+        default: 'json'
+        type: choice
+        options:
+          - json
+          - jsonl
+      output_directory:
+        description: 'Output directory path'
+        required: false
+        default: 'output/'
+      type_inference:
+        description: 'Enable type inference (true/false)'
+        required: false
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+      strict_mode:
+        description: 'Halt on validation errors (true/false)'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+
+  schedule:
+    # Optional: Daily at 02:00 UTC for batch processing
+    # Uncomment to enable scheduled conversions
+    # - cron: '0 2 * * *'
+
+  repository_dispatch:
+    types: [csv_convert_request]
+
+jobs:
+  convert:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Parse inputs
+        id: inputs
+        run: |
+          # For workflow_dispatch
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "csv_files=${{ github.event.inputs.csv_files }}" >> $GITHUB_OUTPUT
+            echo "output_format=${{ github.event.inputs.output_format }}" >> $GITHUB_OUTPUT
+            echo "output_directory=${{ github.event.inputs.output_directory }}" >> $GITHUB_OUTPUT
+            echo "type_inference=${{ github.event.inputs.type_inference }}" >> $GITHUB_OUTPUT
+            echo "strict_mode=${{ github.event.inputs.strict_mode }}" >> $GITHUB_OUTPUT
+          
+          # For schedule (use default input directory)
+          elif [ "${{ github.event_name }}" = "schedule" ]; then
+            echo "csv_files=input/" >> $GITHUB_OUTPUT
+            echo "output_format=json" >> $GITHUB_OUTPUT
+            echo "output_directory=output/" >> $GITHUB_OUTPUT
+            echo "type_inference=true" >> $GITHUB_OUTPUT
+            echo "strict_mode=false" >> $GITHUB_OUTPUT
+          
+          # For repository_dispatch (parse from client_payload)
+          elif [ "${{ github.event_name }}" = "repository_dispatch" ]; then
+            echo "csv_files=${{ github.event.client_payload.csv_files || 'input/' }}" >> $GITHUB_OUTPUT
+            echo "output_format=${{ github.event.client_payload.output_format || 'json' }}" >> $GITHUB_OUTPUT
+            echo "output_directory=${{ github.event.client_payload.output_directory || 'output/' }}" >> $GITHUB_OUTPUT
+            echo "type_inference=${{ github.event.client_payload.type_inference || 'true' }}" >> $GITHUB_OUTPUT
+            echo "strict_mode=${{ github.event.client_payload.strict_mode || 'false' }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Run conversion
+        id: convert
+        run: |
+          cd tools
+          
+          # Build arguments
+          ARGS="${{ steps.inputs.outputs.csv_files }}"
+          ARGS="$ARGS --output-format ${{ steps.inputs.outputs.output_format }}"
+          ARGS="$ARGS --output-directory ../${{ steps.inputs.outputs.output_directory }}"
+          
+          if [ "${{ steps.inputs.outputs.type_inference }}" = "false" ]; then
+            ARGS="$ARGS --no-type-inference"
+          fi
+          
+          if [ "${{ steps.inputs.outputs.strict_mode }}" = "true" ]; then
+            ARGS="$ARGS --strict"
+          fi
+          
+          # Run converter
+          python converter.py $ARGS
+        continue-on-error: true
+
+      - name: Check results
+        id: check
+        run: |
+          if [ -f "${{ steps.inputs.outputs.output_directory }}/run_summary.json" ]; then
+            echo "success=true" >> $GITHUB_OUTPUT
+            
+            # Extract summary stats
+            SUMMARY=$(cat "${{ steps.inputs.outputs.output_directory }}/run_summary.json")
+            FILES_PROCESSED=$(echo "$SUMMARY" | jq -r '.files_processed')
+            SUCCESSFUL=$(echo "$SUMMARY" | jq -r '.successful')
+            FAILED=$(echo "$SUMMARY" | jq -r '.failed')
+            TOTAL_ROWS=$(echo "$SUMMARY" | jq -r '.total_rows')
+            
+            echo "files_processed=$FILES_PROCESSED" >> $GITHUB_OUTPUT
+            echo "successful=$SUCCESSFUL" >> $GITHUB_OUTPUT
+            echo "failed=$FAILED" >> $GITHUB_OUTPUT
+            echo "total_rows=$TOTAL_ROWS" >> $GITHUB_OUTPUT
+          else
+            echo "success=false" >> $GITHUB_OUTPUT
+            echo "files_processed=0" >> $GITHUB_OUTPUT
+            echo "successful=0" >> $GITHUB_OUTPUT
+            echo "failed=0" >> $GITHUB_OUTPUT
+            echo "total_rows=0" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Commit results
+        if: steps.check.outputs.success == 'true'
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          
+          # Add only output files
+          git add ${{ steps.inputs.outputs.output_directory }}/*.json
+          git add ${{ steps.inputs.outputs.output_directory }}/*.jsonl
+          git add ${{ steps.inputs.outputs.output_directory }}/*.md
+          
+          # Create commit
+          git commit -m "Convert ${{ steps.check.outputs.files_processed }} CSV files to ${{ steps.inputs.outputs.output_format }}
+
+          - Files processed: ${{ steps.check.outputs.files_processed }}
+          - Successful: ${{ steps.check.outputs.successful }}
+          - Failed: ${{ steps.check.outputs.failed }}
+          - Total rows: ${{ steps.check.outputs.total_rows }}
+          - Output directory: ${{ steps.inputs.outputs.output_directory }}
+          - Timestamp: $(date -u +"%Y-%m-%dT%H:%M:%SZ")" || echo "No changes to commit"
+          
+          git push
+
+      - name: Create summary
+        run: |
+          echo "## CSV-to-JSON Conversion Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Files Processed | ${{ steps.check.outputs.files_processed }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Successful | ${{ steps.check.outputs.successful }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Failed | ${{ steps.check.outputs.failed }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Total Rows | ${{ steps.check.outputs.total_rows }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Output Format | ${{ steps.inputs.outputs.output_format }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Output Directory | ${{ steps.inputs.outputs.output_directory }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ steps.check.outputs.success }}" = "true" ]; then
+            echo "✅ Conversion completed successfully" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "See \`${{ steps.inputs.outputs.output_directory }}/run_summary.json\` and \`validation_report.md\` for details." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Conversion failed" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Check the workflow logs for error details." >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Upload validation report
+        if: steps.check.outputs.success == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: validation-report
+          path: |
+            ${{ steps.inputs.outputs.output_directory }}/run_summary.json
+            ${{ steps.inputs.outputs.output_directory }}/validation_report.md
+          retention-days: 30
+
+      - name: Fail if conversion failed
+        if: steps.check.outputs.failed != '0'
+        run: |
+          echo "::error::${{ steps.check.outputs.failed }} file(s) failed to convert"
+          exit 1

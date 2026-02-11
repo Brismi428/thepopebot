@@ -2345,3 +2345,265 @@ All tools expect secrets via environment variables. Never hard-code credentials.
 ---
 
 > **Next steps:** Each tool pattern above can be instantiated by the factory's `assemble_workflow` step. To add a new tool, copy any pattern above, implement `main()`, and register it in the factory's tool registry.
+
+---
+
+## CSV Analysis & Type Inference Tools
+
+### `csv_structure_analyzer`
+
+**Description:** Analyzes CSV file structure to detect encoding, delimiter, quote character, header row, and column count. Handles BOM, various encodings, and malformed CSVs gracefully.
+
+| Field | Detail |
+|---|---|
+| **Input** | `file_path: str`, `header_row: str = 'auto'` (can be 'auto', integer index, or -1 for no headers) |
+| **Output** | `dict` with `encoding`, `delimiter`, `quotechar`, `header_row_index`, `column_count`, `column_names`, `sample_rows` |
+| **Key Dependencies** | `chardet`, `csv` (stdlib) |
+| **MCP Alternative** | None; Python stdlib csv.Sniffer is sufficient |
+
+**Pattern:** File analysis with encoding detection
+**Critical:** Must strip BOM, handle multiple encodings, fallback gracefully
+
+```python
+import chardet, csv
+
+def analyze_csv(file_path: str, header_row: str = 'auto') -> dict:
+    """Analyze CSV structure and detect parameters."""
+    # Detect encoding with chardet
+    with open(file_path, 'rb') as f:
+        raw = f.read(100000)
+    encoding = chardet.detect(raw).get('encoding', 'utf-8')
+    
+    # Detect delimiter and quote char with csv.Sniffer
+    with open(file_path, 'r', encoding=encoding, errors='replace') as f:
+        sample = f.read(10000)
+        # Strip BOM if present
+        if sample.startswith('\ufeff'):
+            sample = sample[1:]
+        dialect = csv.Sniffer().sniff(sample)
+    
+    # Detect header row
+    has_header = csv.Sniffer().has_header(sample)
+    header_row_index = 0 if (header_row == 'auto' and has_header) else int(header_row) if header_row != 'auto' else -1
+    
+    # Read sample rows
+    with open(file_path, 'r', encoding=encoding, errors='replace') as f:
+        if f.read(1) != '\ufeff':
+            f.seek(0)  # Reset if no BOM
+        reader = csv.reader(f, delimiter=dialect.delimiter, quotechar=dialect.quotechar)
+        sample_rows = [row for i, row in enumerate(reader) if i < 5]
+    
+    return {
+        'encoding': encoding,
+        'delimiter': dialect.delimiter,
+        'quotechar': dialect.quotechar,
+        'header_row_index': header_row_index,
+        'column_count': len(sample_rows[0]) if sample_rows else 0,
+        'column_names': sample_rows[0] if header_row_index == 0 else [f"col_{i}" for i in range(len(sample_rows[0]))],
+        'sample_rows': sample_rows[1:] if header_row_index == 0 else sample_rows,
+    }
+```
+
+---
+
+### `statistical_type_inferrer`
+
+**Description:** Infers data types for CSV columns by analyzing all values. Detects integers, floats, booleans, dates, and handles missing values. Returns confidence scores and conflict reports.
+
+| Field | Detail |
+|---|---|
+| **Input** | `data: list[dict]`, `column_names: list[str]` |
+| **Output** | `dict` with per-column type info: `type`, `confidence`, `conflicts`, `null_count`, `sample_values` |
+| **Key Dependencies** | `python-dateutil` (optional for date parsing) |
+| **MCP Alternative** | None; custom logic required |
+
+**Pattern:** Statistical type inference with confidence scoring
+**Critical:** Must handle null value representations, default to string for low confidence
+
+```python
+from dateutil import parser as date_parser
+
+NULL_VALUES = {'', 'N/A', 'null', 'NULL', 'None', '-', 'n/a', 'NA', 'nan', 'NaN'}
+
+def infer_column_type(values: list[str], column_name: str) -> dict:
+    """Infer type for a single column with confidence scoring."""
+    non_null = [v for v in values if v not in NULL_VALUES]
+    if not non_null:
+        return {'type': 'string', 'confidence': 1.0, 'conflicts': [], 'null_count': len(values)}
+    
+    # Count type matches
+    int_count = sum(1 for v in non_null if v.isdigit() or (v[0] == '-' and v[1:].isdigit()))
+    float_count = sum(1 for v in non_null if _is_float(v))
+    bool_count = sum(1 for v in non_null if v.lower() in {'true', 'false', 'yes', 'no', '1', '0', 't', 'f', 'y', 'n'})
+    datetime_count = sum(1 for v in non_null if _is_datetime(v))
+    
+    # Determine best type (priority: boolean > int > float > datetime > string)
+    type_scores = [
+        ('boolean', bool_count / len(non_null)),
+        ('int', int_count / len(non_null)),
+        ('float', (float_count - int_count) / len(non_null)),
+        ('datetime', datetime_count / len(non_null)),
+    ]
+    best_type, best_score = max(type_scores, key=lambda x: x[1])
+    
+    # Default to string if confidence < 80%
+    if best_score < 0.8:
+        best_type = 'string'
+        best_score = 1.0
+    
+    # Log conflicts
+    conflicts = [f"Row {i}: '{v}'" for i, v in enumerate(values) if v not in NULL_VALUES and not _matches_type(v, best_type)]
+    
+    return {
+        'type': best_type,
+        'confidence': round(best_score, 3),
+        'conflicts': conflicts[:10],  # Limit to first 10
+        'null_count': len(values) - len(non_null),
+        'sample_values': non_null[:5],
+    }
+
+def _is_float(v): 
+    try: float(v); return True
+    except: return False
+
+def _is_datetime(v):
+    try: date_parser.parse(v); return True
+    except: return False
+
+def _matches_type(v, t):
+    if t == 'int': return v.isdigit() or (v[0] == '-' and v[1:].isdigit())
+    if t == 'float': return _is_float(v)
+    if t == 'boolean': return v.lower() in {'true', 'false', 'yes', 'no', '1', '0', 't', 'f', 'y', 'n'}
+    if t == 'datetime': return _is_datetime(v)
+    return True
+```
+
+---
+
+### `data_quality_validator`
+
+**Description:** Validates CSV data quality without ever failing. Always returns a report. Detects empty rows, duplicates, ragged rows, and type conflicts.
+
+| Field | Detail |
+|---|---|
+| **Input** | `data: list[dict]`, `type_map: dict`, `strict_mode: bool`, `expected_columns: int` |
+| **Output** | `dict` with `issues`, `stats`, `validation_passed` |
+| **Key Dependencies** | `hashlib` (stdlib) |
+| **MCP Alternative** | None |
+
+**Pattern:** Fail-safe validation with actionable reporting
+**Critical:** Never raises exceptions, always returns a report
+
+```python
+import hashlib
+
+def validate_data(data: list[dict], type_map: dict, strict_mode: bool = False, expected_columns: int = None) -> dict:
+    """Validate data quality and return report."""
+    issues = []
+    empty_rows = duplicate_rows = ragged_rows = type_conflicts = 0
+    seen_hashes = set()
+    
+    for i, row in enumerate(data):
+        # Empty rows
+        if all(v in ('', None) for v in row.values()):
+            empty_rows += 1
+            issues.append({'row': i, 'column': None, 'issue': 'Empty row', 'severity': 'warning', 'action': 'Row skipped'})
+            continue
+        
+        # Duplicates (hash-based)
+        row_hash = hashlib.md5(str(sorted(row.items())).encode()).hexdigest()
+        if row_hash in seen_hashes:
+            duplicate_rows += 1
+            issues.append({'row': i, 'column': None, 'issue': 'Duplicate row', 'severity': 'info', 'action': 'Kept duplicate'})
+        seen_hashes.add(row_hash)
+        
+        # Ragged rows
+        if expected_columns and len([v for v in row.values() if v != '']) != expected_columns:
+            ragged_rows += 1
+            issues.append({'row': i, 'column': None, 'issue': f'Ragged row', 'severity': 'warning', 'action': 'Padded/truncated'})
+    
+    # Count type conflicts from type_map
+    for col, type_info in type_map.items():
+        type_conflicts += len([c for c in type_info.get('conflicts', []) if not c.startswith('...')])
+    
+    validation_passed = not (strict_mode and issues)
+    
+    return {
+        'issues': issues,
+        'stats': {'empty_rows': empty_rows, 'duplicate_rows': duplicate_rows, 'ragged_rows': ragged_rows, 'type_conflicts': type_conflicts},
+        'validation_passed': validation_passed,
+    }
+```
+
+---
+
+## Data Transformation Tools
+
+### `type_converting_json_writer`
+
+**Description:** Writes JSON or JSONL output with intelligent type conversion. Handles missing values, applies type conversions from type map, supports streaming for large files.
+
+| Field | Detail |
+|---|---|
+| **Input** | `data: list[dict]`, `type_map: dict`, `output_path: str`, `format: str` ('json' or 'jsonl') |
+| **Output** | `dict` with `output_file`, `rows_written`, `file_size_bytes`, `processing_time_ms` |
+| **Key Dependencies** | `json` (stdlib), `python-dateutil` (for datetime conversion) |
+| **MCP Alternative** | None; custom conversion logic required |
+
+**Pattern:** Type-aware JSON serialization with streaming support
+**Critical:** Must handle conversion failures gracefully, clean up partial writes on error
+
+```python
+import json, time
+from pathlib import Path
+from dateutil import parser as date_parser
+
+NULL_VALUES = {'', 'N/A', 'null', 'NULL', 'None', '-', 'n/a', 'NA', 'nan', 'NaN'}
+
+def convert_value(value: str, target_type: str):
+    """Convert string value to target type."""
+    if value in NULL_VALUES:
+        return None
+    try:
+        if target_type == 'int': return int(value)
+        if target_type == 'float': return float(value)
+        if target_type == 'boolean': return str(value).lower() in {'true', 'yes', '1', 't', 'y'}
+        if target_type == 'datetime': return date_parser.parse(value).isoformat()
+        return str(value)
+    except:
+        return str(value)  # Fallback to string
+
+def write_json(data: list[dict], type_map: dict, output_path: str, format: str = 'json') -> dict:
+    """Write JSON/JSONL with type conversions."""
+    start = time.time()
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    # Apply type conversions
+    converted_data = []
+    for row in data:
+        converted_row = {col: convert_value(value, type_map.get(col, {}).get('type', 'string')) for col, value in row.items()}
+        converted_data.append(converted_row)
+    
+    # Write output
+    try:
+        if format == 'jsonl':
+            with output_path.open('w', encoding='utf-8') as f:
+                for record in converted_data:
+                    f.write(json.dumps(record, ensure_ascii=False) + '\n')
+        else:  # json
+            with output_path.open('w', encoding='utf-8') as f:
+                json.dump(converted_data, f, indent=2, ensure_ascii=False)
+    except Exception as e:
+        if output_path.exists():
+            output_path.unlink()  # Clean up partial write
+        raise RuntimeError(f"Failed to write output: {e}") from e
+    
+    return {
+        'output_file': str(output_path),
+        'rows_written': len(converted_data),
+        'file_size_bytes': output_path.stat().st_size,
+        'processing_time_ms': round((time.time() - start) * 1000, 2),
+    }
+```
+
