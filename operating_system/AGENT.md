@@ -30,3 +30,16 @@ So you can assume that:
 **Always** use `/job/tmp/` for any temporary files you create.
 
 Scripts in `/job/tmp/` can use `__dirname`-relative paths (e.g., `../docs/data.json`) to reference repo files, because they're inside the repo tree. The `.gitignore` excludes `tmp/` so nothing in this directory gets committed.
+
+### Standard Output Directories
+
+Always write output to the correct directory based on what you're producing:
+
+| Output type | Directory | Example |
+|---|---|---|
+| PRPs (Product Requirements Prompts) | `PRPs/` | `PRPs/website-uptime-monitor.md` |
+| Built WAT systems | `systems/{system-name}/` | `systems/website-uptime-monitor/` |
+| Job logs and session data | `logs/{JOB_ID}/` | `logs/7febcb2b-.../` |
+| Learned patterns | `library/` | `library/patterns.md`, `library/tool_catalog.md` |
+
+**NEVER create files in the repo root.** All output must go under `systems/`, `logs/`, `library/`, or `PRPs/`. No exceptions — root-level files (e.g., `JOB_COMPLETION_SUMMARY.md`, `REPORT.md`, `output.json`) will block auto-merge and are not permitted. Each built system must be self-contained inside its own `systems/{system-name}/` directory.
