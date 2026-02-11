@@ -625,3 +625,125 @@ Patterns are building blocks. Here are common compositions:
 - **Git commit discipline**: Stage ONLY state/rss_state.json and logs/*.json. NEVER `git add -A`. Commit message includes date and post count for easy history review.
 - **No MCP dependencies**: Uses standard Python libraries (feedparser, smtplib, json, pathlib). Works out-of-the-box with only Python and requirements.txt. No external MCPs required.
 - **Cost awareness**: ~3-5 minutes per day = ~90-150 GitHub Actions minutes/month. Well within free tier (2,000/month private, unlimited public). Minimal token cost for state management only.
+
+## 11. Content Transformation with Tone Matching
+
+**Summary:** An AI-powered content repurposing pipeline that extracts content from a source URL, analyzes its tone and style, and generates platform-optimized variants (social media, email, etc.) that match the source tone automatically.
+
+### When to Use
+
+- You need to publish the same content across multiple platforms with different format requirements
+- Content must maintain consistent voice/tone across all platforms
+- Manual reformatting for each platform is time-consuming and error-prone
+- You want AI to handle platform-specific best practices (character limits, hashtags, formatting)
+
+### Steps
+
+1. **Fetch source content** -- Scrape the source URL (blog post, article) and extract clean text/markdown. Use Firecrawl with HTTP fallback for reliability.
+2. **Analyze tone** -- Use LLM (Claude) with structured output to analyze writing style across multiple dimensions: formality, technical level, humor, primary emotion. Return confidence score.
+3. **Generate platform variants (parallel)** -- For each target platform (Twitter, LinkedIn, email, Instagram):
+   - Send source content + tone analysis to LLM
+   - Request platform-optimized output matching source tone
+   - Enforce platform-specific constraints (char limits, hashtag counts, formatting rules)
+   - Validate character counts before accepting output
+4. **Merge and output** -- Combine all variants into single JSON file with metadata, tone analysis, and all platform content
+
+### Key Tools / MCPs
+
+- **Firecrawl MCP** -- reliable web scraping with JS rendering support
+- **Anthropic MCP** -- Claude for tone analysis and content generation
+- **HTTP + BeautifulSoup** -- fallback scraping if Firecrawl unavailable
+- **Python stdlib** -- JSON manipulation, filename slugification, output assembly
+
+### GitHub Actions Trigger
+
+```yaml
+on:
+  workflow_dispatch:
+    inputs:
+      blog_url:
+        description: 'Blog post URL to repurpose'
+        required: true
+  # Can also be triggered on new blog post detection via RSS or webhook
+```
+
+### Example Use Cases
+
+- Marketing team publishes a blog post, wants Twitter thread, LinkedIn post, email newsletter section, and Instagram caption
+- Content creator wants to maximize reach by publishing same content on all major platforms
+- Agency needs to repurpose client blog posts for multi-channel campaigns
+- Developer advocates want to turn technical blog posts into social-friendly content
+
+### Subagent Architecture
+
+- **content-scraper-specialist** -- Handles web scraping with fallback strategies
+- **tone-analyzer-specialist** -- Analyzes source content tone/style
+- **content-generator-specialist** -- Coordinates multi-platform generation (can use Agent Teams for parallelization)
+- **output-assembler-specialist** -- Merges all content into final JSON
+
+### Agent Teams Parallelization
+
+Platform generation is ideal for Agent Teams:
+- 4 independent platform generation tasks (Twitter, LinkedIn, email, Instagram)
+- Each takes 10-15 seconds sequentially = 40-55s total
+- Parallel execution with 4 teammates = 12-18s
+- **2x speedup** with identical results and same token cost
+
+### Platform-Specific Constraints
+
+| Platform | Char Limit | Hashtags | Format Notes |
+|----------|------------|----------|--------------|
+| Twitter | 280 per tweet | 2-3 per thread | Numbered thread (1/N format), hook in first tweet, CTA in last |
+| LinkedIn | 3000 max, 1300 target | 3-5 | Professional tone, hook before "see more" fold, line breaks |
+| Email | 500-800 words | N/A | Subject line (40-60 chars), scannable format, HTML + plain text |
+| Instagram | 2200 max | 10-15 | Casual tone, emojis (3-5), line breaks, hook before "more" button |
+
+### Tone Matching Pattern
+
+1. LLM analyzes source content with structured JSON schema
+2. Returns tone profile: {formality, technical_level, humor_level, primary_emotion, confidence}
+3. Platform generators receive tone profile in their prompts
+4. Each generator adjusts output style to match source tone (formal → formal, casual → casual)
+5. Result: All platforms sound like they were written by the same person
+
+### Failure Handling
+
+- **Scraping failure** -- Halt workflow immediately (no content = can't proceed). Log clear error about paywall/404/timeout.
+- **Tone analysis failure** -- Return default neutral profile, continue with warning. Quality slightly reduced but system remains functional.
+- **Single platform failure** -- Continue with other platforms. Include error structure for failed platform in output. Partial success is acceptable.
+- **Character limit exceeded** -- Tools automatically truncate with "..." and log warning. Better than crashing.
+
+### Performance & Cost
+
+**Execution time**:
+- Sequential: ~52-74 seconds
+- With Agent Teams: ~25-37 seconds (2x faster)
+
+**API cost per run** (Claude Sonnet 4):
+- Scraping: $0.01-0.02 (Firecrawl)
+- LLM calls: ~$0.09 (tone + 4 platforms)
+- **Total: ~$0.10-0.11 per blog post**
+
+### Success Criteria
+
+✅ Source content extracted (≥ 100 chars)
+✅ Tone analysis returns confidence ≥ 0.5
+✅ At least 2/4 platforms generate successfully
+✅ All character counts within platform limits
+✅ Output JSON file written to repo
+
+### Key Learnings
+
+- **Tone matching is powerful** -- AI can accurately replicate writing style when given structured tone analysis
+- **Parallel generation scales well** -- 4 independent LLM calls are perfect for Agent Teams
+- **Character validation is critical** -- Must validate before returning, not after
+- **Partial success is acceptable** -- 3/4 platforms working is better than all-or-nothing
+- **Firecrawl + fallback pattern works** -- Primary API with HTTP backup maximizes reliability
+- **Subagent specialization reduces complexity** -- Each subagent has clear, scoped responsibility
+
+### Related Patterns
+
+Combines elements of:
+- **Scrape > Process > Output** (content extraction)
+- **Fan-Out > Process > Merge** (parallel platform generation via Agent Teams)
+- **Generate > Review > Publish** (content creation with validation)

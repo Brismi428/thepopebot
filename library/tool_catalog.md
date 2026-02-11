@@ -2866,3 +2866,192 @@ def main(state_path: str, new_items: list, timestamp: str, max_items: int = 1000
     path.write_text(json.dumps(state, indent=2))
 ```
 
+
+---
+
+## Content Transformation Tools (content-repurposer)
+
+### `analyze_tone`
+
+**Description:** Analyzes writing style and tone of content using Claude with structured JSON output. Returns multi-dimensional tone profile (formality, technical level, humor, emotion) with confidence score.
+
+| Field | Detail |
+|---|---|
+| **Input** | `markdown_content: str` -- Content to analyze |
+| **Output** | `dict` with `formality`, `technical_level`, `humor_level`, `primary_emotion`, `confidence`, `rationale` |
+| **Key Dependencies** | `anthropic` |
+| **MCP Alternative** | Anthropic MCP |
+
+```python
+import json, os
+from anthropic import Anthropic
+
+def main(content: str) -> dict:
+    """Analyze tone with fallback to default profile."""
+    client = Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+    
+    system_prompt = """Analyze tone and return JSON:
+    {
+      "formality": "formal" | "semi-formal" | "casual",
+      "technical_level": "beginner" | "intermediate" | "advanced" | "expert",
+      "humor_level": "none" | "low" | "medium" | "high",
+      "primary_emotion": "description",
+      "confidence": 0.0-1.0,
+      "rationale": "brief explanation"
+    }"""
+    
+    try:
+        message = client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=1024,
+            temperature=0.2,
+            system=system_prompt,
+            messages=[{"role": "user", "content": content[:8000]}]
+        )
+        result = json.loads(message.content[0].text.strip())
+        return result
+    except Exception:
+        # Fallback to default profile
+        return {
+            "formality": "neutral",
+            "technical_level": "general",
+            "humor_level": "low",
+            "primary_emotion": "informative",
+            "confidence": 0.5,
+            "rationale": "Analysis failed, using defaults"
+        }
+```
+
+**Pattern: Structured LLM analysis with default fallback** -- Never fails completely, always returns valid structure.
+
+---
+
+### `platform_content_generator`
+
+**Description:** Generates platform-optimized content (Twitter, LinkedIn, email, Instagram) from source content and tone analysis. Enforces platform-specific character limits and formats.
+
+| Field | Detail |
+|---|---|
+| **Input** | `content: str`, `tone_analysis: dict`, `platform: str`, `optional_params: dict` |
+| **Output** | Platform-specific dict with text, char_count, hashtags, etc. |
+| **Key Dependencies** | `anthropic`, `markdown` (for email) |
+| **MCP Alternative** | Anthropic MCP |
+
+```python
+import os, json
+from anthropic import Anthropic
+
+PLATFORM_CONSTRAINTS = {
+    "twitter": {"char_limit": 280, "hashtags": 3, "format": "thread"},
+    "linkedin": {"char_limit": 3000, "target": 1300, "hashtags": 5},
+    "email": {"word_target": 600, "format": "html+text"},
+    "instagram": {"char_limit": 2200, "hashtags": 15, "emojis": "3-5"}
+}
+
+def generate_for_platform(content: str, tone: dict, platform: str) -> dict:
+    """Generate platform-optimized content matching source tone."""
+    client = Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+    constraints = PLATFORM_CONSTRAINTS[platform]
+    
+    system_prompt = f"""You are a {platform} content expert.
+    
+    Generate {platform} content from the source, matching this tone:
+    - Formality: {tone['formality']}
+    - Technical: {tone['technical_level']}
+    - Humor: {tone['humor_level']}
+    
+    Constraints: {json.dumps(constraints)}
+    
+    Return JSON with platform-specific fields."""
+    
+    message = client.messages.create(
+        model="claude-sonnet-4-20250514",
+        max_tokens=4096,
+        temperature=0.7,
+        system=system_prompt,
+        messages=[{"role": "user", "content": content[:6000]}]
+    )
+    
+    result = json.loads(message.content[0].text.strip())
+    
+    # Validate character count
+    if platform == "twitter":
+        for tweet in result.get("thread", []):
+            if len(tweet["text"]) > 280:
+                tweet["text"] = tweet["text"][:277] + "..."
+    elif platform in ["linkedin", "instagram"]:
+        if len(result["text"]) > constraints["char_limit"]:
+            result["text"] = result["text"][:constraints["char_limit"]-3] + "..."
+    
+    return result
+```
+
+**Pattern: LLM generation with platform constraints and automatic truncation** -- Character validation is critical before returning.
+
+---
+
+### `content_assembler`
+
+**Description:** Merges multiple platform content outputs into a single unified JSON structure with metadata. Generates timestamped filename and writes to output directory.
+
+| Field | Detail |
+|---|---|
+| **Input** | `source_metadata: dict`, `tone_analysis: dict`, `platform_content: dict`, `output_dir: str` |
+| **Output** | `dict` with `output_path`, `total_chars`, `platform_count` |
+| **Key Dependencies** | `python-slugify`, stdlib (json, pathlib, datetime) |
+| **MCP Alternative** | None; pure data manipulation |
+
+```python
+import json
+from datetime import datetime
+from pathlib import Path
+from slugify import slugify
+
+def assemble_output(source_metadata: dict, tone_analysis: dict, 
+                    platform_content: dict, output_dir: str = "output") -> dict:
+    """Merge all content into timestamped JSON file."""
+    
+    # Create output directory
+    Path(output_dir).mkdir(parents=True, exist_ok=True)
+    
+    # Generate filename
+    timestamp = datetime.utcnow().strftime("%Y%m%d-%H%M%S")
+    slug = slugify(source_metadata.get("title", "untitled"))[:50]
+    filename = f"{timestamp}-{slug}.json"
+    output_file = Path(output_dir) / filename
+    
+    # Build unified structure
+    output_data = {
+        "source_url": source_metadata.get("url"),
+        "source_title": source_metadata.get("title"),
+        "generated_at": datetime.utcnow().isoformat() + "Z",
+        "tone_analysis": tone_analysis,
+        "twitter": platform_content.get("twitter", {}),
+        "linkedin": platform_content.get("linkedin", {}),
+        "email": platform_content.get("email", {}),
+        "instagram": platform_content.get("instagram", {})
+    }
+    
+    # Write JSON
+    with output_file.open("w", encoding="utf-8") as f:
+        json.dump(output_data, f, indent=2, ensure_ascii=False)
+    
+    # Calculate stats
+    total_chars = sum(
+        len(str(platform_content.get(p, {}).get("text", "")))
+        for p in ["twitter", "linkedin", "email", "instagram"]
+    )
+    platform_count = sum(
+        1 for p in ["twitter", "linkedin", "email", "instagram"]
+        if platform_content.get(p, {}).get("status") != "generation_failed"
+    )
+    
+    return {
+        "output_path": str(output_file),
+        "total_chars": total_chars,
+        "platform_count": platform_count,
+        "status": "success"
+    }
+```
+
+**Pattern: Timestamped output with slug + stats calculation** -- Creates human-readable, sortable filenames.
