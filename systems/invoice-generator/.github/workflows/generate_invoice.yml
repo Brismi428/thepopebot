@@ -1,0 +1,191 @@
+name: Generate Invoice
+
+on:
+  workflow_dispatch:
+    inputs:
+      invoice_json:
+        description: 'Invoice data as JSON string'
+        required: true
+        type: string
+
+  push:
+    paths:
+      - 'input/*.json'
+
+  repository_dispatch:
+    types: ['generate_invoice']
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Create required directories
+        run: |
+          mkdir -p output logs state input config
+
+      - name: Initialize config if missing
+        run: |
+          if [ ! -f config/invoice_config.json ]; then
+            echo "No config found. Creating default config."
+            cat > config/invoice_config.json << 'EOF'
+          {
+            "company_name": "Your Company LLC",
+            "company_address": "456 Vendor Ave, Austin, TX 78701",
+            "company_email": "hello@yourcompany.com",
+            "company_phone": "+1 (512) 555-0100",
+            "tax_rate": 0.0825,
+            "tax_label": "Sales Tax (8.25%)",
+            "currency": "USD",
+            "currency_symbol": "$"
+          }
+          EOF
+          fi
+
+      - name: Determine input source
+        id: input
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "Using workflow dispatch input"
+            echo '${{ inputs.invoice_json }}' > input/dispatch.json
+            echo "INPUT_PATH=input/dispatch.json" >> $GITHUB_OUTPUT
+          elif [ "${{ github.event_name }}" == "repository_dispatch" ]; then
+            echo "Using repository dispatch payload"
+            echo '${{ toJson(github.event.client_payload) }}' > input/dispatch.json
+            echo "INPUT_PATH=input/dispatch.json" >> $GITHUB_OUTPUT
+          elif [ "${{ github.event_name }}" == "push" ]; then
+            echo "Using file from push event"
+            INPUT_FILE=$(ls input/*.json 2>/dev/null | head -n 1)
+            if [ -z "$INPUT_FILE" ]; then
+              echo "Error: No JSON file found in input/ directory"
+              exit 1
+            fi
+            echo "INPUT_PATH=$INPUT_FILE" >> $GITHUB_OUTPUT
+          else
+            echo "Error: Unsupported trigger event"
+            exit 1
+          fi
+
+      - name: Validate and parse invoice input
+        id: parse
+        run: |
+          python tools/parse_invoice_input.py "${{ steps.input.outputs.INPUT_PATH }}" > tmp/parsed.json
+          cat tmp/parsed.json
+
+      - name: Load configuration
+        id: config
+        run: |
+          python tools/load_config.py config/invoice_config.json > tmp/config.json
+          cat tmp/config.json
+
+      - name: Get next invoice number
+        id: counter
+        run: |
+          python tools/manage_counter.py state/invoice_counter.json get_next > tmp/counter.json
+          INVOICE_NUMBER=$(jq -r '.invoice_number' tmp/counter.json)
+          echo "INVOICE_NUMBER=$INVOICE_NUMBER" >> $GITHUB_OUTPUT
+          cat tmp/counter.json
+
+      - name: Generate PDF invoice
+        run: |
+          python tools/generate_invoice_pdf.py \
+            --invoice-data tmp/parsed.json \
+            --invoice-number "${{ steps.counter.outputs.INVOICE_NUMBER }}" \
+            --config tmp/config.json \
+            --output tmp/invoice.pdf
+          
+          # Verify PDF was created
+          if [ ! -f tmp/invoice.pdf ]; then
+            echo "Error: PDF generation failed"
+            exit 1
+          fi
+          
+          PDF_SIZE=$(stat -f%z tmp/invoice.pdf 2>/dev/null || stat -c%s tmp/invoice.pdf)
+          if [ "$PDF_SIZE" -lt 5000 ]; then
+            echo "Error: PDF is too small ($PDF_SIZE bytes), likely corrupted"
+            exit 1
+          fi
+          
+          echo "✓ PDF generated ($PDF_SIZE bytes)"
+
+      - name: Save invoice and update logs
+        id: save
+        run: |
+          CLIENT_NAME=$(jq -r '.client_name' tmp/parsed.json)
+          INVOICE_DATE=$(jq -r '.invoice_date' tmp/parsed.json)
+          
+          # Calculate total
+          SUBTOTAL=$(jq '[.line_items[] | .quantity * .rate] | add' tmp/parsed.json)
+          TAX_RATE=$(jq -r '.tax_rate // 0' tmp/config.json)
+          TAX=$(echo "$SUBTOTAL * $TAX_RATE" | bc -l)
+          TOTAL=$(echo "$SUBTOTAL + $TAX" | bc -l)
+          
+          python tools/save_invoice.py \
+            --pdf-path tmp/invoice.pdf \
+            --client-name "$CLIENT_NAME" \
+            --invoice-date "$INVOICE_DATE" \
+            --invoice-number "${{ steps.counter.outputs.INVOICE_NUMBER }}" \
+            --total "$TOTAL" > tmp/save_result.json
+          
+          PDF_PATH=$(jq -r '.pdf_path' tmp/save_result.json)
+          echo "PDF_PATH=$PDF_PATH" >> $GITHUB_OUTPUT
+          echo "✓ Invoice saved to $PDF_PATH"
+
+      - name: Clean up input file (if push event)
+        if: github.event_name == 'push'
+        run: |
+          rm -f "${{ steps.input.outputs.INPUT_PATH }}"
+          echo "✓ Removed input file"
+
+      - name: Commit results
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "feat: generate invoice ${{ steps.counter.outputs.INVOICE_NUMBER }}"
+          file_pattern: 'output/*.pdf state/invoice_counter.json logs/invoice_log.jsonl input/'
+
+      - name: Upload invoice as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: invoice-${{ steps.counter.outputs.INVOICE_NUMBER }}
+          path: ${{ steps.save.outputs.PDF_PATH }}
+          retention-days: 90
+
+      - name: Comment on issue (if triggered by Agent HQ)
+        if: github.event.issue.number
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `✅ Invoice generated successfully!\n\n- **Invoice Number:** ${{ steps.counter.outputs.INVOICE_NUMBER }}\n- **PDF:** \`${{ steps.save.outputs.PDF_PATH }}\`\n- **Download:** [View artifact](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})`
+            });
+
+      - name: Notify on failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            if (context.payload.issue) {
+              await github.rest.issues.createComment({
+                issue_number: context.payload.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: `❌ Invoice generation failed. [View logs](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})`
+              });
+            }

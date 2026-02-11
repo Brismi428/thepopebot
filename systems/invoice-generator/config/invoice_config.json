@@ -1,0 +1,11 @@
+{
+  "company_name": "Your Company LLC",
+  "company_address": "456 Vendor Ave, Austin, TX 78701",
+  "company_email": "hello@yourcompany.com",
+  "company_phone": "+1 (512) 555-0100",
+  "company_logo_path": null,
+  "tax_rate": 0.0825,
+  "tax_label": "Sales Tax (8.25%)",
+  "currency": "USD",
+  "currency_symbol": "$"
+}

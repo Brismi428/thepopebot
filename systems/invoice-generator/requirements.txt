@@ -1,0 +1,20 @@
+# Invoice Generator Dependencies
+# Install with: pip install -r requirements.txt
+
+# PDF generation
+reportlab>=4.0.0
+
+# Input validation
+jsonschema>=4.0.0
+
+# Date parsing
+python-dateutil>=2.8.0
+
+# Atomic file locking
+filelock>=3.0.0
+
+# Image handling for PDF logos
+pillow>=10.0.0
+
+# Client name normalization
+python-slugify>=8.0.0

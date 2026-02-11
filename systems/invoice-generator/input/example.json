@@ -1,0 +1,32 @@
+{
+  "client_name": "Acme Corporation",
+  "client_address": "123 Business St, Suite 100, San Francisco, CA 94105",
+  "client_email": "billing@acmecorp.com",
+  "project_description": "Q1 2026 Website Redesign and Development",
+  "invoice_date": "2026-02-11",
+  "due_date": "2026-03-13",
+  "line_items": [
+    {
+      "description": "UI/UX Design (40 hours)",
+      "quantity": 40,
+      "rate": 150.00
+    },
+    {
+      "description": "Frontend Development (80 hours)",
+      "quantity": 80,
+      "rate": 175.00
+    },
+    {
+      "description": "Backend Integration (20 hours)",
+      "quantity": 20,
+      "rate": 200.00
+    }
+  ],
+  "payment_terms": "Net 30. Payment due within 30 days of invoice date.",
+  "payment_methods": [
+    "Wire Transfer: Bank of America, Routing 123456789, Account 987654321",
+    "Check: Payable to 'Your Company LLC', Mail to 456 Vendor Ave, Austin, TX 78701",
+    "PayPal: payments@yourcompany.com"
+  ],
+  "notes": "Thank you for your business. Please include invoice number with payment."
+}
