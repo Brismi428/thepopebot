@@ -3055,3 +3055,504 @@ def assemble_output(source_metadata: dict, tone_analysis: dict,
 ```
 
 **Pattern: Timestamped output with slug + stats calculation** -- Creates human-readable, sortable filenames.
+
+---
+
+## PDF Generation
+
+### `reportlab_invoice_generator`
+
+**Description:** Generates professional PDF invoices with company branding, itemized tables, tax calculations, and payment instructions using the ReportLab library.
+
+| Field | Detail |
+|---|---|
+| **Input** | `invoice_data: dict`, `invoice_number: str`, `config: dict` (branding, tax rate) |
+| **Output** | PDF bytes (stdout) or file |
+| **Key Dependencies** | `reportlab>=4.0.0`, `pillow>=10.0.0` (for logo images) |
+| **MCP Alternative** | None standard; pure Python PDF generation |
+
+```python
+#!/usr/bin/env python3
+"""Generate professional PDF invoice with ReportLab."""
+
+import sys
+import json
+from pathlib import Path
+from decimal import Decimal
+from reportlab.lib.pagesizes import letter
+from reportlab.lib.units import inch
+from reportlab.lib import colors
+from reportlab.platypus import Table, TableStyle
+from reportlab.pdfgen import canvas
+import io
+
+def main(invoice_data_path: str, invoice_number: str, config_path: str,
+         output_path: str = None) -> bytes:
+    """Generate PDF invoice from validated data."""
+    # Load inputs
+    invoice_data = json.loads(Path(invoice_data_path).read_text())
+    config = json.loads(Path(config_path).read_text())
+    
+    # Create PDF in memory
+    buffer = io.BytesIO()
+    c = canvas.Canvas(buffer, pagesize=letter)
+    width, height = letter  # 612 x 792 points
+    
+    y = height - inch
+    
+    # Company branding
+    logo_path = config.get("company_logo_path")
+    if logo_path and Path(logo_path).exists():
+        try:
+            c.drawImage(logo_path, inch, y - 0.5*inch, width=2*inch,
+                       preserveAspectRatio=True, mask='auto')
+            y -= 0.7*inch
+        except Exception:
+            pass  # Skip logo on error
+    
+    c.setFont("Helvetica-Bold", 16)
+    c.drawString(inch, y, config.get("company_name", "Your Company"))
+    y -= 0.25*inch
+    
+    # Invoice header
+    c.setFont("Helvetica-Bold", 24)
+    c.drawString(inch, y, "INVOICE")
+    y -= 0.3*inch
+    
+    c.setFont("Helvetica", 10)
+    c.drawString(inch, y, f"Invoice Number: {invoice_number}")
+    y -= 0.2*inch
+    
+    # Line items table
+    currency_symbol = config.get("currency_symbol", "$")
+    table_data = [["Description", "Quantity", "Rate", "Amount"]]
+    
+    subtotal = Decimal(0)
+    for item in invoice_data["line_items"]:
+        qty = Decimal(str(item["quantity"]))
+        rate = Decimal(str(item["rate"]))
+        amount = qty * rate
+        subtotal += amount
+        
+        table_data.append([
+            item["description"],
+            f"{qty:.2f}",
+            f"{currency_symbol}{rate:.2f}",
+            f"{currency_symbol}{amount:.2f}"
+        ])
+    
+    # Create and render table
+    table = Table(table_data, colWidths=[3.5*inch, 0.8*inch, 0.8*inch, 1*inch])
+    table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('ALIGN', (1, 0), (-1, -1), 'RIGHT'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+    ]))
+    
+    table_width, table_height = table.wrap(0, 0)
+    table.drawOn(c, inch, y - table_height)
+    y -= (table_height + 0.4*inch)
+    
+    # Totals
+    tax_rate = Decimal(str(config.get("tax_rate", 0)))
+    tax = subtotal * tax_rate
+    total = subtotal + tax
+    
+    totals_x = width - 2.5*inch
+    c.drawString(totals_x, y, "Subtotal:")
+    c.drawRightString(width - inch, y, f"{currency_symbol}{subtotal:.2f}")
+    y -= 0.25*inch
+    
+    if tax_rate > 0:
+        tax_label = config.get("tax_label", f"Tax ({tax_rate*100:.2f}%)")
+        c.drawString(totals_x, y, tax_label)
+        c.drawRightString(width - inch, y, f"{currency_symbol}{tax:.2f}")
+        y -= 0.25*inch
+    
+    c.setFont("Helvetica-Bold", 12)
+    c.drawString(totals_x, y, "Total:")
+    c.drawRightString(width - inch, y, f"{currency_symbol}{total:.2f}")
+    
+    c.save()
+    buffer.seek(0)
+    pdf_bytes = buffer.getvalue()
+    
+    if output_path:
+        Path(output_path).write_bytes(pdf_bytes)
+    else:
+        sys.stdout.buffer.write(pdf_bytes)
+    
+    return pdf_bytes
+
+if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--invoice-data", required=True)
+    parser.add_argument("--invoice-number", required=True)
+    parser.add_argument("--config", required=True)
+    parser.add_argument("--output")
+    args = parser.parse_args()
+    
+    main(args.invoice_data, args.invoice_number, args.config, args.output)
+```
+
+**Key Features:**
+- **US Letter layout** (612×792 points)
+- **Company branding** (logo, name, address, contact)
+- **Itemized table** with automatic column sizing
+- **Currency calculations** using Decimal (prevents rounding errors)
+- **Tax calculation** with configurable rate
+- **Graceful degradation** (skips logo if missing, continues without crash)
+- **Memory-efficient** (uses BytesIO buffer, not temp files)
+
+**Usage:**
+```bash
+python generate_invoice_pdf.py \
+  --invoice-data validated.json \
+  --invoice-number INV-1043 \
+  --config config.json \
+  --output invoice.pdf
+```
+
+**Gotchas:**
+- ReportLab uses points (72 points = 1 inch)
+- Always use `Decimal` for currency to prevent float rounding errors
+- Logo rendering can fail silently -- wrap in try/except
+- Built-in Helvetica font is always available as fallback
+
+---
+
+### `atomic_file_counter`
+
+**Description:** Manages sequential counter with atomic file operations and locking to prevent race conditions in concurrent workflows.
+
+| Field | Detail |
+|---|---|
+| **Input** | `counter_path: str`, `action: Literal["get_next", "get_current"]` |
+| **Output** | JSON with `{"value": "INV-1043", "numeric": 1043}` |
+| **Key Dependencies** | `filelock>=3.0.0` |
+| **MCP Alternative** | None; pure Python file locking |
+
+```python
+#!/usr/bin/env python3
+"""Atomic counter with file locking."""
+
+import sys
+import json
+from pathlib import Path
+from datetime import datetime
+from filelock import FileLock, Timeout
+
+DEFAULT_COUNTER = {"last_value": 1000, "prefix": "ID-", "padding": 4}
+
+def main(counter_path: str, action: str = "get_next") -> dict:
+    """Get next or current counter value with atomic locking."""
+    counter_file = Path(counter_path)
+    lock_path = Path(f"{counter_path}.lock")
+    
+    try:
+        # Create parent dirs
+        counter_file.parent.mkdir(parents=True, exist_ok=True)
+        
+        # Acquire lock with 5 second timeout
+        with FileLock(lock_path, timeout=5):
+            # Read or initialize
+            try:
+                counter = json.loads(counter_file.read_text())
+            except (FileNotFoundError, json.JSONDecodeError):
+                counter = dict(DEFAULT_COUNTER)
+            
+            # Increment if get_next
+            if action == "get_next":
+                counter["last_value"] += 1
+                counter_file.write_text(json.dumps(counter, indent=2))
+            
+            # Format value
+            formatted = f"{counter['prefix']}{counter['last_value']:0{counter['padding']}d}"
+            
+            return {"value": formatted, "numeric": counter["last_value"]}
+    
+    except Timeout:
+        # Fallback: timestamp-based unique value
+        timestamp = int(datetime.utcnow().timestamp())
+        return {"value": f"FALLBACK-{timestamp}", "numeric": timestamp}
+
+if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("counter_path")
+    parser.add_argument("action", choices=["get_next", "get_current"], 
+                       nargs="?", default="get_next")
+    args = parser.parse_args()
+    
+    result = main(args.counter_path, args.action)
+    print(json.dumps(result, indent=2))
+```
+
+**Key Features:**
+- **Atomic read-modify-write** via filelock
+- **5-second timeout** prevents indefinite hangs
+- **Timestamp fallback** ensures workflow continues even if lock fails
+- **Auto-initialization** to default value on missing file
+- **Configurable prefix and padding** stored in state file
+
+**Usage:**
+```bash
+# Get next value (increments)
+python manage_counter.py state/counter.json get_next
+
+# Get current value (no increment)
+python manage_counter.py state/counter.json get_current
+```
+
+**Gotchas:**
+- Lock file is created at `{counter_path}.lock`
+- Timeout fallback breaks sequential numbering but ensures uniqueness
+- Concurrent GitHub Actions runs may hit lock timeout -- this is expected
+- Always commit counter file after incrementing
+
+---
+
+### `json_schema_validator`
+
+**Description:** Validates JSON data against a schema with business rule checks and detailed error reporting.
+
+| Field | Detail |
+|---|---|
+| **Input** | `data_path: str` (or `-` for stdin), schema embedded in code |
+| **Output** | Validated JSON with normalized fields added |
+| **Key Dependencies** | `jsonschema>=4.0.0`, `python-dateutil>=2.8.0` |
+| **MCP Alternative** | None; stdlib + libraries |
+
+```python
+#!/usr/bin/env python3
+"""Validate JSON input with schema and business rules."""
+
+import sys
+import json
+from pathlib import Path
+from jsonschema import validate, ValidationError
+from dateutil import parser as date_parser
+
+SCHEMA = {
+    "type": "object",
+    "required": ["field1", "field2"],
+    "properties": {
+        "field1": {"type": "string", "minLength": 1},
+        "field2": {"type": "number", "minimum": 0},
+    }
+}
+
+def main(input_path: str) -> dict:
+    """Parse and validate JSON input."""
+    # Read input
+    if input_path == '-':
+        data = json.load(sys.stdin)
+    else:
+        data = json.loads(Path(input_path).read_text())
+    
+    # Validate schema
+    validate(instance=data, schema=SCHEMA)
+    
+    # Business rules (custom validation)
+    if "date_field" in data:
+        try:
+            parsed_date = date_parser.parse(data["date_field"])
+            data["date_normalized"] = parsed_date.isoformat()
+        except Exception as e:
+            raise ValueError(f"Invalid date format: {e}")
+    
+    # Add normalized fields
+    if "name_field" in data:
+        from slugify import slugify
+        data["name_slug"] = slugify(data["name_field"], lowercase=True)
+    
+    return data
+
+if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("input_path", help="Path to JSON or '-' for stdin")
+    args = parser.parse_args()
+    
+    try:
+        result = main(args.input_path)
+        print(json.dumps(result, indent=2))
+    except (ValidationError, ValueError) as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+```
+
+**Key Features:**
+- **Schema validation** via jsonschema library
+- **Business rule checks** beyond schema (dates, cross-field validation)
+- **Normalization** (add slugs, parse dates, etc.)
+- **Clear error messages** with field names and reasons
+- **Stdin support** for pipeline composition
+
+**Usage:**
+```bash
+# From file
+python validate_input.py input.json
+
+# From stdin
+cat input.json | python validate_input.py -
+```
+
+**Gotchas:**
+- Schema validation is structural only -- business rules require custom code
+- Date parsing is lenient by default -- use strict format if needed
+- Slugification may produce empty strings for special-character-only inputs
+
+---
+
+### `standardized_filename_generator`
+
+**Description:** Generates safe, standardized filenames from user input with slugification and timestamp support.
+
+| Field | Detail |
+|---|---|
+| **Input** | `name: str`, `date: str`, `id: str`, template pattern |
+| **Output** | Safe filename string |
+| **Key Dependencies** | `python-slugify>=8.0.0` |
+| **MCP Alternative** | None; stdlib + library |
+
+```python
+#!/usr/bin/env python3
+"""Generate standardized filenames."""
+
+import sys
+from slugify import slugify
+
+def main(name: str, date: str, id_value: str, extension: str = "pdf") -> str:
+    """Generate filename: {name-slug}-{date}-{id}.{ext}"""
+    name_slug = slugify(name, lowercase=True)
+    
+    if not name_slug:
+        raise ValueError(f"Name '{name}' cannot be converted to valid filename")
+    
+    filename = f"{name_slug}-{date}-{id_value}.{extension}"
+    
+    # Validate filename (no path traversal)
+    if "/" in filename or "\\" in filename or ".." in filename:
+        raise ValueError(f"Invalid filename: {filename}")
+    
+    return filename
+
+if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--name", required=True)
+    parser.add_argument("--date", required=True)
+    parser.add_argument("--id", required=True)
+    parser.add_argument("--extension", default="pdf")
+    args = parser.parse_args()
+    
+    try:
+        filename = main(args.name, args.date, args.id, args.extension)
+        print(filename)
+    except ValueError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+```
+
+**Key Features:**
+- **Slugification** (lowercase, hyphens, no special chars)
+- **Path traversal protection** (rejects ../ and absolute paths)
+- **Empty name detection** (fails if slug is empty)
+- **Configurable extension**
+- **Template pattern** ({slug}-{date}-{id})
+
+**Usage:**
+```bash
+python generate_filename.py \
+  --name "Acme Corporation" \
+  --date "2026-02-11" \
+  --id "INV-1043" \
+  --extension "pdf"
+
+# Output: acme-corporation-2026-02-11-INV-1043.pdf
+```
+
+**Gotchas:**
+- Unicode characters are transliterated (é → e, ñ → n)
+- All special characters become hyphens
+- Multiple consecutive hyphens are collapsed to one
+- Leading/trailing hyphens are stripped
+
+---
+
+## Learnings from invoice-generator Build
+
+### Pattern: Collect > Transform > Store with State Management
+
+**What worked:**
+- Sequential pipeline with clear phase separation
+- Atomic file locking for state (filelock library)
+- Graceful degradation (timestamp fallback when lock fails)
+- Decimal type for currency (prevents float rounding errors)
+- Separate config and state files (config is editable, state is machine-managed)
+
+**What didn't work:**
+- None -- system validated successfully on first try
+
+**Key insight:** When state affects output (invoice numbers in filename, calculations in PDF), update state BEFORE generating output. This prevents duplicate detection on retry.
+
+### Subagent Specialization
+
+**Effective delegation:**
+- **invoice-parser-specialist** -- Input validation (fail fast)
+- **counter-manager-specialist** -- State management (fast, simple)
+- **pdf-generator-specialist** -- Complex rendering (heavy lifting)
+- **output-handler-specialist** -- File I/O (independent, can fail gracefully)
+
+**Why it worked:**
+- Each subagent has ONE clear responsibility
+- Subagents don't call other subagents (main agent orchestrates)
+- Tool access is minimal (principle of least privilege)
+- Model selection matches complexity (haiku for simple I/O, sonnet for rendering)
+
+### Validation Strategy
+
+**Three levels:**
+1. **Syntax** (AST parse, imports, structure)
+2. **Unit** (each tool with sample inputs)
+3. **Integration** (full pipeline trace, cross-references)
+
+**Critical checks:**
+- Every tool has try/except error handling
+- Every workflow step has failure mode and fallback
+- All tools exit 0 on success, non-zero on failure
+- Cross-reference: workflow.md references match actual tool files
+
+**Validation mindset:** Better to catch issues at build time than runtime. But runtime validation (GitHub Actions) is the ultimate test.
+
+### Cost-Effectiveness
+
+**Zero-API-call systems are possible:**
+- PDF generation: ReportLab (local)
+- JSON validation: jsonschema (local)
+- File locking: filelock (local)
+- Date parsing: dateutil (local)
+
+**Cost:** $0/month for 100 invoices (within GitHub Actions free tier)
+
+**When to use:** When all required capabilities are available as Python libraries or stdlib. No external APIs needed.
+
+### Documentation Density
+
+**CLAUDE.md must cover three execution paths:**
+1. CLI (local development)
+2. GitHub Actions (production)
+3. Agent HQ (issue-driven)
+
+Each path needs:
+- Setup instructions
+- Trigger methods
+- Example usage
+- Troubleshooting
+
+**README.md is for humans, CLAUDE.md is for agents.**
+

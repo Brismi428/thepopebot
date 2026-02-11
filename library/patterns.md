@@ -747,3 +747,214 @@ Combines elements of:
 - **Scrape > Process > Output** (content extraction)
 - **Fan-Out > Process > Merge** (parallel platform generation via Agent Teams)
 - **Generate > Review > Publish** (content creation with validation)
+
+## 12. Sequential State Management Pipeline
+
+**Summary:** A data transformation pipeline that maintains persistent state across runs using atomic file operations. Each execution reads current state, transforms data, generates output, updates state, and commits results -- all while preventing race conditions.
+
+### When to Use
+
+- You need sequential numbering or versioning that persists across workflow runs
+- Output depends on previous runs (counters, IDs, sequence numbers)
+- Concurrent execution must not create duplicates
+- State must survive container/server restarts
+- Git-native state storage is preferred over external databases
+
+### Steps
+
+1. **Read State** -- Load previous state from committed file
+2. **Lock State** -- Acquire file lock to prevent concurrent modifications
+3. **Transform Data** -- Process input using current state
+4. **Update State** -- Increment counter, add ID, update version
+5. **Generate Output** -- Produce artifacts using updated state
+6. **Commit State** -- Write state file and outputs to repo
+7. **Release Lock** -- Allow next execution to proceed
+
+### Key Tools / MCPs
+
+- **filelock** (Python) -- Atomic file locking with timeout
+- **Git** -- State file versioning and recovery
+- **filesystem MCP** -- Read/write state files
+- **JSON** (stdlib) -- State serialization
+
+### GitHub Actions Trigger
+
+```yaml
+on:
+  workflow_dispatch:
+    inputs:
+      data:
+        description: 'Input data to process'
+        required: true
+  push:
+    paths:
+      - 'input/**'
+```
+
+### Example Use Cases
+
+- Invoice generator with sequential invoice numbers (INV-1001, INV-1002...)
+- Document versioning system (v1.0, v1.1, v2.0...)
+- Sequential ID assignment for records
+- Incrementing batch job numbers
+- Auto-incrementing PR numbers in custom systems
+
+### State File Format
+
+```json
+{
+  "last_value": 1042,
+  "prefix": "INV-",
+  "padding": 4,
+  "metadata": {
+    "last_updated": "2026-02-11T14:30:00Z",
+    "total_count": 1042
+  }
+}
+```
+
+### Atomic Operations Pattern
+
+```python
+from filelock import FileLock, Timeout
+
+lock_path = f"{state_file}.lock"
+try:
+    with FileLock(lock_path, timeout=5):
+        # Read current state
+        state = json.loads(Path(state_file).read_text())
+        
+        # Modify state
+        state["last_value"] += 1
+        
+        # Write updated state
+        Path(state_file).write_text(json.dumps(state, indent=2))
+        
+        # Return new value
+        return state["last_value"]
+except Timeout:
+    # Fallback: use timestamp or other unique value
+    return generate_fallback_value()
+```
+
+### Failure Handling
+
+**Lock timeout (5 seconds)**
+- **Cause**: Concurrent execution or filesystem issue
+- **Action**: Use fallback mechanism (timestamp, UUID, or queue for retry)
+- **Log**: Warning with details for investigation
+- **Continue**: Workflow proceeds with fallback value
+
+**State file missing**
+- **Cause**: First run or file deleted
+- **Action**: Initialize to default starting value
+- **Log**: Info message about initialization
+- **Continue**: Normal operation from initial state
+
+**State file corrupted**
+- **Cause**: Incomplete write, manual edit, merge conflict
+- **Action**: Restore from Git history or reinitialize
+- **Log**: Error with corrupted content
+- **Halt**: Require manual intervention (prevents data loss)
+
+**Concurrent modifications**
+- **Prevented by**: File locking ensures only one process modifies at a time
+- **If lock fails**: Fallback prevents workflow failure
+- **Trade-off**: Fallback may break sequential ordering but ensures system continues
+
+### Git-Native State Management
+
+State files are committed to the repository:
+
+**Benefits:**
+- Version history (full audit trail)
+- Rollback capability (`git checkout HEAD~5 state.json`)
+- Merge conflict detection
+- No external database needed
+- Free hosting on GitHub
+
+**Considerations:**
+- Not suitable for high-frequency updates (>100/min)
+- Commit overhead (~1-2 seconds per update)
+- Repo size impact (minimal for small JSON files)
+
+### Fallback Strategies
+
+When atomic state update fails, use one of these fallbacks:
+
+| Strategy | When to Use | Trade-off |
+|----------|-------------|-----------|
+| **Timestamp** | Unique value needed, order not critical | Breaks sequential numbering |
+| **UUID** | Unique value needed, no pattern required | No human-readable sequence |
+| **Queue for retry** | Sequential order is critical | Delays processing |
+| **Range allocation** | High concurrency expected | More complex state management |
+
+### Integration Points
+
+**GitHub Actions:**
+```yaml
+steps:
+  - name: Get next value
+    id: state
+    run: |
+      python tools/manage_state.py state.json get_next > output.json
+      VALUE=$(jq -r '.value' output.json)
+      echo "VALUE=$VALUE" >> $GITHUB_OUTPUT
+  
+  - name: Use value
+    run: |
+      process_data.py --id ${{ steps.state.outputs.VALUE }}
+  
+  - name: Commit state
+    run: |
+      git add state.json output/*
+      git commit -m "Process ID ${{ steps.state.outputs.VALUE }}"
+      git push
+```
+
+### Success Criteria
+
+- State file exists and is valid JSON
+- Lock acquired within timeout (5 seconds)
+- State incremented correctly
+- Output files reference correct state value
+- State file committed (or queued for commit)
+- Audit trail complete (log entry written)
+
+### Performance Characteristics
+
+- **Lock acquisition**: < 100ms (no contention) to 5s (with contention)
+- **State read/write**: < 50ms (small JSON files)
+- **Git commit**: 1-2 seconds
+- **Total overhead**: 2-7 seconds per execution
+
+**Bottleneck:** Git commit (unavoidable for state persistence)
+
+### Key Learnings (from invoice-generator build)
+
+- **Lock timeout must have fallback** -- Never let locking failure halt the workflow
+- **Initialize on missing file** -- Don't fail on first run
+- **Timestamp fallback works** -- Breaks sequence but ensures uniqueness
+- **Audit log is separate** -- State update and audit logging are independent
+- **State-before-output** -- Update state BEFORE generating output (prevents duplicate detection)
+- **Decimal for currency** -- Use Decimal type when state affects financial calculations
+
+### Anti-Patterns to Avoid
+
+- **No locking** -- Race conditions create duplicates
+- **Hardcoded initial value** -- Make it configurable
+- **Fail without fallback** -- Lock timeout should not crash the system
+- **Update state after output** -- Output first, then state (wrong order leads to duplicates on failure)
+- **Manual state edits** -- Always use the tool (manual edits bypass validation)
+- **Ignore lock timeouts** -- Log and investigate when locks time out frequently
+
+### Related Patterns
+
+Combines elements of:
+- **Collect > Transform > Store** (base pipeline)
+- **Monitor > Detect > Alert** (state changes can trigger alerts)
+- **Generate > Review > Publish** (state affects generated content)
+
+Often used with:
+- **Intake > Enrich > Deliver** (state provides IDs or version numbers)
+- **Fan-Out > Process > Merge** (each parallel task gets unique ID from state)
