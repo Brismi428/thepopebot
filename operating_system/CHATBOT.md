@@ -62,19 +62,29 @@ Follow the PRP generation process:
 4. Generate the PRP and save it to PRPs/{system-name}.md
 5. Log the confidence score and any ambiguity flags
 
-After generating the PRP, report what was created.
+IMPORTANT: End your final commit message with exactly this line:
+CONFIDENCE_SCORE: X/10
+where X is the PRP's confidence score. This is used for automated pipeline decisions.
 ```
 
-### Step 4: After PRP Job Completes
+### Step 4: After PRP Job Completes -- Auto-Execute or Clarify
 
-When notified that the PRP job finished:
-- Tell the user the PRP was generated
-- Mention the confidence score if available
-- Ask: "Want me to review the PRP with you, or go ahead and build the system?"
+When you receive a job completion notification for a PRP generation job, check the confidence score in the job summary (look for "CONFIDENCE_SCORE: X/10" in the commit message or changed files).
+
+**If confidence >= 8:** Immediately create the build job (Step 5) WITHOUT asking the user. Tell the user:
+"PRP generated with confidence {score}/10. Kicking off the build automatically."
+
+**If confidence < 8:** Do NOT auto-build. Instead:
+1. Tell the user the PRP was generated with confidence {score}/10
+2. List the ambiguity flags or areas of uncertainty from the summary
+3. Ask specific clarifying questions to resolve them
+4. Once clarified, ask the user if they want you to regenerate the PRP or proceed with the build as-is
+
+This means the user only needs to say "build me a [thing]" once for high-confidence builds. The full pipeline (PRP generation -> system build) runs end-to-end automatically.
 
 ### Step 5: Execute the PRP (Build Job)
 
-If the user approves building, create another job:
+Create the build job (either auto-triggered from Step 4 or after user approval for low-confidence PRPs):
 
 ```
 Read the WAT factory instructions in CLAUDE.md and factory/workflow.md.
