@@ -2607,3 +2607,262 @@ def write_json(data: list[dict], type_map: dict, output_path: str, format: str =
     }
 ```
 
+
+---
+
+## RSS & Feed Processing Tools
+
+### `rss_feed_fetcher`
+
+**Description:** Fetches and parses multiple RSS/Atom feeds using feedparser with per-feed error isolation. One failed feed does not kill the entire batch.
+
+| Field | Detail |
+|---|---|
+| **Input** | `feeds_config: list[dict]` (name, url, tags), `timeout: int = 15` |
+| **Output** | `dict` with `feeds: list[dict]` (name, url, entries, error) |
+| **Key Dependencies** | `feedparser`, `logging` |
+| **MCP Alternative** | None; feedparser is standard for RSS parsing |
+
+**Pattern:** Batch processing with per-item error isolation
+**Critical:** Must handle malformed XML, missing fields, and network timeouts gracefully
+
+```python
+import feedparser
+import logging
+
+def main(feeds_config: list[dict], timeout: int = 15) -> dict:
+    """Fetch multiple RSS/Atom feeds with per-feed error handling."""
+    results = []
+    
+    for feed in feeds_config:
+        try:
+            parsed = feedparser.parse(
+                feed["url"],
+                request_headers={"User-Agent": "RSS-Monitor/1.0"}
+            )
+            
+            # Extract and normalize entries
+            entries = []
+            for entry in parsed.entries:
+                entries.append({
+                    "title": entry.get("title", "Untitled"),
+                    "link": entry.get("link", ""),
+                    "summary": entry.get("summary", entry.get("description", ""))[:300],
+                    "published": entry.get("published", entry.get("updated", "")),
+                    "guid": entry.get("id", entry.get("link", ""))
+                })
+            
+            results.append({
+                "name": feed["name"],
+                "url": feed["url"],
+                "entries": entries,
+                "error": None
+            })
+            
+        except Exception as e:
+            logging.error(f"Failed to fetch {feed['name']}: {e}")
+            results.append({
+                "name": feed["name"],
+                "url": feed["url"],
+                "entries": [],
+                "error": str(e)
+            })
+    
+    return {"feeds": results}
+```
+
+---
+
+### `composite_guid_deduplicator`
+
+**Description:** Filters records by composite GUID keys to prevent false deduplication across multiple sources. Uses `source_id::item_id` pattern.
+
+| Field | Detail |
+|---|---|
+| **Input** | `items: list[dict]`, `seen_guids: set[str]`, `source_key: str`, `guid_key: str` |
+| **Output** | `dict` with `new_items: list[dict]`, `new_guids: list[str]` |
+| **Key Dependencies** | None (stdlib only) |
+| **MCP Alternative** | None |
+
+**Pattern:** Composite key deduplication with source isolation
+**Critical:** Must use composite keys when the same GUID can appear in different sources
+
+```python
+def main(items: list[dict], seen_guids: set[str], source_key: str = "source", guid_key: str = "guid") -> dict:
+    """Filter items using composite GUID keys (source::guid)."""
+    new_items = []
+    new_guids = []
+    
+    for item in items:
+        # Create composite GUID
+        composite = f"{item[source_key]}::{item[guid_key]}"
+        
+        if composite not in seen_guids:
+            new_items.append(item)
+            new_guids.append(composite)
+    
+    return {"new_items": new_items, "new_guids": new_guids}
+```
+
+---
+
+### `html_email_generator`
+
+**Description:** Generates MIME multipart email with HTML primary and plain-text fallback. Groups content by sections, applies inline CSS styling.
+
+| Field | Detail |
+|---|---|
+| **Input** | `content: list[dict]` (grouped data), `subject: str`, `date: str` |
+| **Output** | `MIMEMultipart` email object |
+| **Key Dependencies** | `email.mime.multipart`, `email.mime.text` (stdlib) |
+| **MCP Alternative** | None |
+
+**Pattern:** Dual-format email generation for maximum client compatibility
+**Critical:** Must include both HTML and plain-text parts. Use inline CSS (no external stylesheets).
+
+```python
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+
+def main(content: list[dict], subject: str, date: str) -> MIMEMultipart:
+    """Generate HTML email with plain-text fallback."""
+    
+    # Build HTML with inline CSS
+    html = f"""<!DOCTYPE html>
+<html>
+<head><style>
+body {{ font-family: sans-serif; max-width: 800px; margin: 0 auto; }}
+h2 {{ color: #2c3e50; border-left: 4px solid #3498db; padding-left: 10px; }}
+.post {{ background: #f8f9fa; padding: 15px; margin: 15px 0; }}
+</style></head>
+<body>
+<h1>{subject}</h1>
+"""
+    
+    # Build plain-text version
+    text = f"{subject}\n{'=' * 60}\n\n"
+    
+    for section in content:
+        html += f"<h2>{section['name']}</h2>"
+        text += f"\n{section['name']}\n{'-' * len(section['name'])}\n"
+        
+        for item in section['items']:
+            html += f"""<div class="post">
+<strong><a href="{item['link']}">{item['title']}</a></strong><br>
+{item['summary']}<br>
+<small>{item['date']}</small>
+</div>"""
+            text += f"\n• {item['title']}\n  {item['link']}\n  {item['summary']}\n"
+    
+    html += "</body></html>"
+    
+    # Create MIME message
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = subject
+    msg.attach(MIMEText(text, "plain", "utf-8"))
+    msg.attach(MIMEText(html, "html", "utf-8"))
+    
+    return msg
+```
+
+---
+
+### `smtp_sender_with_retry`
+
+**Description:** Sends email via SMTP with TLS authentication and exponential backoff retry logic for transient failures.
+
+| Field | Detail |
+|---|---|
+| **Input** | `email: MIMEMultipart`, `smtp_config: dict` (host, port, user, pass, from, to) |
+| **Output** | `dict` with `sent: bool`, `message_id: str`, `error: str or None` |
+| **Key Dependencies** | `smtplib` (stdlib), `time` (stdlib) |
+| **MCP Alternative** | None |
+
+**Pattern:** Network operation with retry and backoff
+**Critical:** Must use TLS/SSL. Retry transient errors (auth, timeout) but not permanent failures (invalid recipient).
+
+```python
+import smtplib
+import time
+
+def main(email, smtp_config: dict, max_retries: int = 2, retry_delay: int = 30) -> dict:
+    """Send email via SMTP with retry logic."""
+    
+    for attempt in range(1, max_retries + 1):
+        try:
+            with smtplib.SMTP(smtp_config["host"], smtp_config["port"], timeout=30) as server:
+                server.starttls()
+                server.login(smtp_config["user"], smtp_config["password"])
+                
+                email["From"] = smtp_config["from"]
+                email["To"] = smtp_config["to"]
+                
+                server.send_message(email)
+                
+                return {
+                    "sent": True,
+                    "message_id": email.get("Message-ID", ""),
+                    "error": None
+                }
+        
+        except smtplib.SMTPAuthenticationError as e:
+            if attempt < max_retries:
+                time.sleep(retry_delay)
+            else:
+                return {"sent": False, "message_id": "", "error": f"Auth failed: {e}"}
+        
+        except Exception as e:
+            if attempt < max_retries:
+                time.sleep(retry_delay)
+            else:
+                return {"sent": False, "message_id": "", "error": str(e)}
+    
+    return {"sent": False, "message_id": "", "error": "Max retries exceeded"}
+```
+
+---
+
+### `bounded_state_persister`
+
+**Description:** Persists state with automatic size management. Enforces maximum item count by keeping most recent entries (FIFO eviction).
+
+| Field | Detail |
+|---|---|
+| **Input** | `state: dict`, `new_items: list`, `timestamp: str`, `max_items: int = 10000` |
+| **Output** | Updated state file written to disk |
+| **Key Dependencies** | `json` (stdlib), `pathlib` (stdlib) |
+| **MCP Alternative** | `@anthropic/filesystem-mcp` |
+
+**Pattern:** Bounded state persistence with automatic pruning
+**Critical:** Must enforce size limit to prevent unbounded growth. Keep most recent items, not oldest.
+
+```python
+import json
+from pathlib import Path
+
+def main(state_path: str, new_items: list, timestamp: str, max_items: int = 10000):
+    """Update state with automatic size management."""
+    
+    # Load current state
+    path = Path(state_path)
+    if path.exists():
+        state = json.loads(path.read_text())
+    else:
+        state = {"last_run": None, "items": []}
+    
+    # Merge new items
+    updated_items = state.get("items", []) + new_items
+    
+    # Enforce size limit (keep most recent)
+    if len(updated_items) > max_items:
+        updated_items = updated_items[-max_items:]
+    
+    # Update state
+    state["last_run"] = timestamp
+    state["items"] = updated_items
+    
+    # Write atomically
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(state, indent=2))
+```
+

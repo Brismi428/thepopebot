@@ -606,3 +606,22 @@ Patterns are building blocks. Here are common compositions:
 - **Metadata reporting**: run_summary.json (machine-readable) + validation_report.md (human-readable). Includes per-file stats, type inference results, validation issues, recommendations.
 - **No secrets required**: Uses only stdlib (csv, json, pathlib) + chardet + python-dateutil. No external APIs. Pure data transformation pipeline.
 - **Git commit discipline**: Stage ONLY output files (never `git add -A`). Commit message includes file count, row count, timestamp. Output directory is parameterized.
+
+### RSS Digest Monitor (rss-digest-monitor)
+- **Pattern**: Monitor > Collect > Transform > Deliver (with state persistence)
+- **Flow**: Load state > Fetch RSS feeds > Filter new posts > Generate HTML digest > Send email > Update state > Commit
+- **Key insight**: State persistence in Git prevents post duplication across runs. Composite GUID keys (feed_url::guid) prevent false deduplication. State is ONLY updated after successful email delivery, ensuring retry on failure.
+- **Subagent architecture**: Three specialist subagents (rss-fetcher-specialist, digest-generator-specialist, state-manager-specialist). Subagents are the DEFAULT delegation mechanism. Sequential execution is correct due to clear data dependencies.
+- **Per-feed error isolation**: One failed feed does NOT kill the entire run. Each feed is fetched independently with try/except. Failed feeds are logged and skipped. Graceful degradation ensures partial success.
+- **Composite GUID pattern**: Use `feed_url::entry_guid` as deduplication key instead of guid alone. Prevents false positives when different feeds use the same GUID format.
+- **State file size management**: Enforce maximum 10,000 GUIDs by keeping most recent entries. Prevents unbounded state growth. Log warning if limit is hit.
+- **Email with fallback**: MIME multipart with HTML primary and plain-text fallback. Ensures compatibility with all email clients. HTML is styled with inline CSS for maximum rendering support.
+- **Conditional email send**: Skip email generation if no new posts found. Silent run with state update only. Saves API calls and prevents empty emails.
+- **SMTP retry logic**: Retry once with 30s delay on transient failures (auth, network, timeout). Do NOT update state if email send fails -- posts retry on next run.
+- **First-run initialization**: Missing or corrupted state file initializes empty state. All posts are processed on first run. Log warning but continue (better to duplicate once than crash).
+- **Date parsing with fallback**: Use python-dateutil for robust parsing of varied date formats. If unparseable, use current timestamp. Include post anyway (better to duplicate than miss).
+- **Three execution paths**: (1) Scheduled cron at 8 AM UTC (primary), (2) Manual dispatch with force_send (testing), (3) Local CLI (development). All produce identical output.
+- **Run summary logging**: Each run produces `logs/YYYY-MM-DD_run.json` with feeds_checked, feeds_failed, new_posts, email_sent, failed_feeds array. Machine-readable audit trail.
+- **Git commit discipline**: Stage ONLY state/rss_state.json and logs/*.json. NEVER `git add -A`. Commit message includes date and post count for easy history review.
+- **No MCP dependencies**: Uses standard Python libraries (feedparser, smtplib, json, pathlib). Works out-of-the-box with only Python and requirements.txt. No external MCPs required.
+- **Cost awareness**: ~3-5 minutes per day = ~90-150 GitHub Actions minutes/month. Well within free tier (2,000/month private, unlimited public). Minimal token cost for state management only.

@@ -1,0 +1,42 @@
+# Environment files - NEVER commit secrets
+.env
+.env.local
+.env.*.local
+
+# Python cache and bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Temporary files
+tmp/
+*.tmp
+*.bak
+
+# Logs (keep the logs/ directory but ignore large log files)
+# Note: logs/*.json are tracked for run history
+
+# Test outputs
+test_output/
+*.test
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
