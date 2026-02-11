@@ -1,0 +1,17 @@
+# Content Repurposer — Python Dependencies
+
+# Web Scraping
+firecrawl-py>=0.0.16  # Firecrawl API client for web scraping
+httpx>=0.27.0         # HTTP client for fallback scraping
+beautifulsoup4>=4.12.0  # HTML parsing fallback
+html2text>=2020.1.16  # Convert HTML to markdown
+
+# AI/LLM
+anthropic>=0.18.0     # Claude API client for tone analysis and generation
+
+# Content Processing
+markdown>=3.5.0       # Convert markdown to HTML for email
+python-slugify>=8.0.0  # Generate clean filenames from titles
+
+# Utilities (stdlib, listed for documentation)
+# json, re, logging, argparse, pathlib, datetime

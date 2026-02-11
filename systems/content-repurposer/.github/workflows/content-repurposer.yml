@@ -1,0 +1,115 @@
+name: Content Repurposer
+
+on:
+  workflow_dispatch:
+    inputs:
+      blog_url:
+        description: 'Blog post URL to repurpose'
+        required: true
+        type: string
+      author_handle:
+        description: 'Author social media handle (optional)'
+        required: false
+        type: string
+        default: ''
+      brand_hashtags:
+        description: 'Comma-separated brand hashtags (optional)'
+        required: false
+        type: string
+        default: ''
+
+jobs:
+  repurpose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    
+    permissions:
+      contents: write
+      pull-requests: write
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+      
+      - name: Set up Claude Code CLI
+        run: |
+          npm install -g @anthropic-ai/claude-code
+      
+      - name: Run Content Repurposer
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          FIRECRAWL_API_KEY: ${{ secrets.FIRECRAWL_API_KEY }}
+        run: |
+          claude workflow.md \
+            --var blog_url="${{ inputs.blog_url }}" \
+            --var author_handle="${{ inputs.author_handle }}" \
+            --var brand_hashtags="${{ inputs.brand_hashtags }}"
+      
+      - name: Check output
+        id: output_check
+        run: |
+          if [ -d "output" ] && [ "$(ls -A output/*.json 2>/dev/null)" ]; then
+            latest_output=$(ls -t output/*.json | head -n1)
+            echo "output_file=$latest_output" >> $GITHUB_OUTPUT
+            echo "✅ Output generated: $latest_output"
+            
+            # Extract summary stats
+            total_chars=$(jq -r '.twitter.thread[].char_count | tonumber' "$latest_output" | awk '{sum+=$1} END {print sum}')
+            twitter_tweets=$(jq -r '.twitter.total_tweets // 0' "$latest_output")
+            linkedin_chars=$(jq -r '.linkedin.char_count // 0' "$latest_output")
+            email_words=$(jq -r '.email.word_count // 0' "$latest_output")
+            instagram_chars=$(jq -r '.instagram.char_count // 0' "$latest_output")
+            
+            echo "summary<<EOF" >> $GITHUB_OUTPUT
+            echo "### Content Repurposer Results" >> $GITHUB_OUTPUT
+            echo "" >> $GITHUB_OUTPUT
+            echo "**Source**: ${{ inputs.blog_url }}" >> $GITHUB_OUTPUT
+            echo "" >> $GITHUB_OUTPUT
+            echo "**Generated Content:**" >> $GITHUB_OUTPUT
+            echo "- 🐦 Twitter: ${twitter_tweets} tweets" >> $GITHUB_OUTPUT
+            echo "- 💼 LinkedIn: ${linkedin_chars} characters" >> $GITHUB_OUTPUT
+            echo "- 📧 Email: ${email_words} words" >> $GITHUB_OUTPUT
+            echo "- 📸 Instagram: ${instagram_chars} characters" >> $GITHUB_OUTPUT
+            echo "" >> $GITHUB_OUTPUT
+            echo "**Output file**: \`$latest_output\`" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+          else
+            echo "❌ No output file generated"
+            exit 1
+          fi
+      
+      - name: Commit results
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add output/
+          git commit -m "content: Repurposed ${{ inputs.blog_url }}"
+          git push
+      
+      - name: Create summary
+        if: always()
+        run: |
+          if [ -f "${{ steps.output_check.outputs.output_file }}" ]; then
+            echo "${{ steps.output_check.outputs.summary }}" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### Content Repurposer Failed" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Source**: ${{ inputs.blog_url }}" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "❌ Failed to generate content. Check logs for details." >> $GITHUB_STEP_SUMMARY
+          fi
+      
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "::error::Content repurposing failed for ${{ inputs.blog_url }}"
