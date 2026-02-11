@@ -1,390 +1,247 @@
 # Content Repurposer
 
-Multi-channel content repurposing system that transforms blog posts into platform-optimized social media content.
+> **WAT System**: Multi-channel content repurposing that transforms blog posts into platform-optimized social media content.
 
-## What It Does
-
-Takes a blog post URL and generates:
-- **Twitter thread** (280 chars/tweet, numbered, with hashtags)
-- **LinkedIn post** (1200-1400 chars, professional tone, hashtags)
-- **Email newsletter section** (500-800 words, HTML + plain text)
-- **Instagram caption** (1500-2000 chars, emojis, 10-15 hashtags)
-
-Each output matches the source content's tone (formal/casual, technical level, humor) automatically.
-
-## Features
-
-- ✅ Automatic tone analysis and matching
-- ✅ Platform-specific character limits enforced
-- ✅ Hashtag and mention suggestions
-- ✅ Graceful fallback (HTTP if Firecrawl fails)
-- ✅ Parallel generation with Agent Teams (2x faster)
-- ✅ Single JSON output with all platforms
-- ✅ Three execution paths: CLI, GitHub Actions, Agent HQ
+Automatically scrapes blog posts, analyzes tone, and generates optimized content for Twitter, LinkedIn, email newsletters, and Instagram — all matching the source content's writing style.
 
 ---
 
-## Setup
+## What It Does
+
+1. **Scrapes** blog post content from any URL (Firecrawl API + HTTP fallback)
+2. **Analyzes** writing tone and style using Claude (formality, technical level, humor, emotion)
+3. **Generates** platform-specific content matching the source tone:
+   - **Twitter**: Threaded tweets with hooks, CTAs, hashtags (280 chars/tweet)
+   - **LinkedIn**: Professional post with hook and CTA (target 1300 chars)
+   - **Email**: Newsletter section with HTML and plain text (500-800 words)
+   - **Instagram**: Caption with emojis and hashtags (1500-2000 chars)
+4. **Outputs** single JSON file with all platforms + metadata
+
+---
+
+## Quick Start
 
 ### Prerequisites
 
-- Python 3.10+
-- Anthropic API key (required)
-- Firecrawl API key (recommended)
+- Python 3.11+
+- Anthropic API key (Claude)
+- Firecrawl API key (optional — HTTP fallback available)
 
-### Installation
-
-1. **Clone this system to your repository**
-
-```bash
-# If standalone
-git clone <this-repo>
-cd content-repurposer
-
-# If part of a monorepo
-# Files are already in systems/content-repurposer/
-```
-
-2. **Install dependencies**
+### 1. Install Dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-3. **Configure environment variables**
+### 2. Configure Secrets
+
+Copy `.env.example` to `.env` and fill in your API keys:
 
 ```bash
 cp .env.example .env
-# Edit .env with your API keys
+# Edit .env with your keys
 ```
 
-Get API keys:
-- **Anthropic**: https://console.anthropic.com (required)
-- **Firecrawl**: https://firecrawl.dev (optional but recommended)
-
----
-
-## Usage
-
-### Path 1: Local CLI (Development)
-
-Run directly from command line with Claude Code:
+### 3. Run via CLI
 
 ```bash
-# Basic usage
-claude workflow.md --var blog_url="https://example.com/blog/post"
+export ANTHROPIC_API_KEY=your_key
+export FIRECRAWL_API_KEY=your_key  # optional
+export CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1  # optional, enables parallel mode
 
-# With optional parameters
-claude workflow.md \
-  --var blog_url="https://example.com/blog/post" \
-  --var author_handle="johndoe" \
-  --var brand_hashtags="YourBrand,Marketing"
+# Run with Claude Code
+claude workflow.md --input '{
+  "blog_url": "https://example.com/blog/my-post",
+  "author_handle": "johndoe",
+  "brand_hashtags": "YourBrand,ContentMarketing"
+}'
 ```
 
-Output is written to `output/{timestamp}-{slug}.json`.
+### 4. Run via GitHub Actions
 
-### Path 2: GitHub Actions (Production)
+1. Push this system to your GitHub repository
+2. Configure secrets in Settings > Secrets and variables > Actions:
+   - `ANTHROPIC_API_KEY` (required)
+   - `FIRECRAWL_API_KEY` (optional)
+3. Go to Actions tab > "Content Repurposer — WAT System" > "Run workflow"
+4. Enter blog URL and optional parameters
+5. Check output in `output/` directory after run completes
 
-1. **Push this system to a GitHub repository**
+### 5. Run via GitHub Agent HQ
 
-2. **Configure GitHub Secrets**
-
-Go to Settings > Secrets and variables > Actions, add:
-- `ANTHROPIC_API_KEY` (required)
-- `FIRECRAWL_API_KEY` (optional)
-
-3. **Trigger workflow manually**
-
-Via GitHub UI:
-- Go to Actions tab
-- Select "Content Repurposer" workflow
-- Click "Run workflow"
-- Enter blog URL and optional parameters
-- Click "Run workflow"
-
-Via GitHub CLI:
-```bash
-gh workflow run content-repurposer.yml \
-  -f blog_url="https://example.com/blog/post" \
-  -f author_handle="johndoe" \
-  -f brand_hashtags="YourBrand,Marketing"
-```
-
-Via API:
-```bash
-curl -X POST \
-  -H "Authorization: token YOUR_GITHUB_PAT" \
-  -H "Accept: application/vnd.github.v3+json" \
-  https://api.github.com/repos/OWNER/REPO/actions/workflows/content-repurposer.yml/dispatches \
-  -d '{"ref":"main","inputs":{"blog_url":"https://example.com/blog/post"}}'
-```
-
-4. **View results**
-
-- Output is committed to `output/{timestamp}-{slug}.json`
-- GitHub Actions summary shows stats and link to output file
-
-### Path 3: Agent HQ (Issue-Driven)
-
-1. **Open a GitHub Issue** with label `content-repurpose`
-
-2. **Issue body format**:
-
-```
-Blog URL: https://example.com/blog/awesome-post
-Author Handle: johndoe
-Brand Hashtags: YourBrand, Marketing
-```
-
-3. **Agent HQ will**:
-- Parse the issue body
-- Execute the workflow via GitHub Actions
-- Open a draft PR with the generated output
-- Comment on the issue with PR link and summary
-
-4. **Review and merge** the PR to add the output to your repo
+1. Create an issue: "Repurpose Blog Post: https://example.com/blog/my-post"
+2. In the body:
+   ```
+   Author Handle: johndoe
+   Brand Hashtags: YourBrand, ContentMarketing
+   ```
+3. Assign to @claude
+4. Review the draft PR with output file
+5. Merge or request changes
 
 ---
 
 ## Output Format
 
-### Example Output File: `output/20260211-133200-awesome-post.json`
+Output files are saved to `output/{timestamp}-{slug}.json`:
 
 ```json
 {
-  "source_url": "https://example.com/blog/awesome-post",
-  "source_title": "How to Master Content Marketing",
-  "source_author": "Jane Doe",
-  "source_publish_date": "2026-02-10",
-  "generated_at": "2026-02-11T13:32:00Z",
-  
+  "source_url": "https://example.com/blog/my-post",
+  "source_title": "My Awesome Post",
+  "generated_at": "2026-02-11T13:20:00Z",
   "tone_analysis": {
-    "formality": "semi-formal",
+    "formality": "casual",
     "technical_level": "intermediate",
     "humor_level": "low",
     "primary_emotion": "informative",
-    "confidence": 0.85,
-    "rationale": "Professional yet accessible tone..."
+    "confidence": 0.85
   },
-  
   "twitter": {
     "thread": [
-      {"tweet_number": 1, "text": "🧵 Ever wonder why...", "char_count": 125},
-      {"tweet_number": 2, "text": "Here's the key insight...", "char_count": 267}
+      {"tweet_number": 1, "text": "Hook...", "char_count": 125},
+      {"tweet_number": 2, "text": "Point 1...", "char_count": 267}
     ],
     "total_tweets": 5,
-    "hashtags": ["#ContentMarketing", "#MarketingTips"],
-    "suggested_mentions": ["@IndustryLeader"]
+    "hashtags": ["#ContentMarketing", "#SEO"]
   },
-  
   "linkedin": {
-    "text": "Full LinkedIn post...",
+    "text": "Full post...",
     "char_count": 1285,
-    "hashtags": ["#Marketing", "#ContentStrategy"],
-    "hook": "Ever wonder why most content fails?",
-    "cta": "What's your take? Share in comments."
+    "hashtags": ["#Marketing"],
+    "hook": "Attention-grabbing opening",
+    "cta": "What's your take?"
   },
-  
   "email": {
-    "subject_line": "The one thing about content marketing",
-    "section_html": "<h2>Key Insights</h2><p>...</p>",
-    "section_text": "KEY INSIGHTS\n\n...",
-    "word_count": 672,
-    "cta": "Read the full post: https://example.com/blog/post"
+    "subject_line": "Newsletter subject",
+    "section_html": "<h2>Title</h2><p>Content...</p>",
+    "section_text": "Plain text version...",
+    "word_count": 672
   },
-  
   "instagram": {
-    "caption": "Ever wondered...?\n\n💡 Here's what changed...",
+    "caption": "Caption with emojis and line breaks...",
     "char_count": 1847,
-    "hashtags": ["#marketing", "#contentcreator", "#tips"],
-    "line_break_count": 6,
-    "emoji_count": 4
+    "hashtags": ["#contentmarketing", "#socialmedia"],
+    "emoji_count": 3
   }
 }
 ```
 
 ---
 
+## Features
+
+### Tone Matching
+The system analyzes the source blog post's writing style and generates platform content that matches it. Formal blog → formal LinkedIn. Casual blog → casual Instagram.
+
+### Agent Teams (Parallel Generation)
+With `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`, platform generation runs in parallel (4 concurrent LLM calls):
+- **Sequential**: ~52-74 seconds
+- **Parallel**: ~25-37 seconds (2x faster)
+- Same token cost, identical results
+
+### Graceful Degradation
+- Firecrawl fails? Falls back to HTTP + BeautifulSoup
+- Single platform fails? Delivers other 3 successfully
+- Tone analysis fails? Uses default neutral profile
+
+### Platform-Specific Optimization
+- **Twitter**: Character count validation, thread numbering, hook/CTA placement
+- **LinkedIn**: Visibility-optimized length (1300 chars), professional hashtags
+- **Email**: HTML + plain text, subject line, structured sections
+- **Instagram**: Emoji count, line breaks, lowercase hashtag validation
+
+---
+
 ## Architecture
 
-### Workflow Steps
+### Workflow Pattern
 
-1. **Scrape Blog Post** → `content-scraper-specialist` → `scrape_blog_post.py`
-2. **Analyze Tone** → `tone-analyzer-specialist` → `analyze_tone.py`
-3. **Generate Platforms (Parallel)** → `content-generator-specialist` → 4 platform generators
-4. **Assemble Output** → `output-assembler-specialist` → `assemble_output.py`
+**Scrape > Process > Output + Content Transformation with Tone Matching + Fan-Out > Process > Merge**
+
+1. Scrape blog post (Firecrawl + HTTP fallback)
+2. Analyze tone (Claude structured extraction)
+3. Generate platforms (4 parallel tasks with Agent Teams or sequential)
+4. Assemble JSON output
+5. Commit to repo
 
 ### Subagents
 
-- **content-scraper-specialist**: Fetches and extracts blog content
-- **tone-analyzer-specialist**: Analyzes writing style
-- **content-generator-specialist**: Coordinates platform generation (can use Agent Teams)
-- **output-assembler-specialist**: Merges into final JSON
+- **content-scraper-specialist**: Web scraping with fallback
+- **tone-analyzer-specialist**: Tone analysis with Claude
+- **content-generator-specialist**: Multi-platform generation coordinator
+- **output-assembler-specialist**: JSON assembly and file writing
 
-### Agent Teams Parallelization
+### Tools
 
-Platform generation runs in parallel (4 teammates) when enabled:
-- Sequential: 40-55 seconds
-- Parallel: 12-18 seconds
-- **2x speedup** with identical results
-
----
-
-## Performance
-
-### Execution Time
-
-- **With Agent Teams**: ~25-37 seconds total
-- **Without Agent Teams**: ~52-74 seconds total
-- Bottleneck: Claude API calls (inevitable)
-
-### Cost Per Run
-
-Assuming Claude Sonnet 4 pricing ($3/MTok input, $15/MTok output):
-
-- Scraping: $0.01-0.02 (Firecrawl)
-- Tone analysis: ~$0.01
-- Platform generation (4x): ~$0.08
-- **Total: ~$0.10-0.11 per blog post**
-
-At 100 runs/month: ~$11/month API costs + negligible GitHub Actions minutes.
-
----
-
-## Troubleshooting
-
-### Scraping Fails
-
-**Symptom**: `status: "error"` from scraper
-
-**Causes**:
-- URL is behind paywall or login wall
-- Site blocks bots (User-Agent filtering)
-- Page has no article content (homepage, search results)
-
-**Solutions**:
-- Try a different URL
-- Check if manual browser access works
-- If consistently failing, check Firecrawl API key
-
-### Tone Analysis Returns Default Profile
-
-**Symptom**: `confidence: 0.5` or lower
-
-**Causes**:
-- Content too short (< 100 chars)
-- LLM API error or timeout
-
-**Impact**: Platform content still generates, but tone matching quality may be reduced
-
-### Platform Generation Fails
-
-**Symptom**: Platform has `status: "generation_failed"`
-
-**Causes**:
-- LLM API rate limit
-- LLM API timeout
-- Character count validation failed
-
-**Solutions**:
-- Retry the workflow (tools have 1 automatic retry)
-- Check ANTHROPIC_API_KEY is valid
-- Check API rate limits on Anthropic dashboard
-
-### Character Count Exceeds Limit
-
-**Symptom**: Warning in logs, content truncated
-
-**Cause**: LLM generated content over platform limit
-
-**Behavior**: Tool automatically truncates with "..." and flags warning
+All tools are standalone Python scripts in `tools/`:
+- `scrape_blog_post.py` — Web scraping
+- `analyze_tone.py` — Tone analysis
+- `generate_twitter.py` — Twitter thread generator
+- `generate_linkedin.py` — LinkedIn post generator
+- `generate_email.py` — Email newsletter generator
+- `generate_instagram.py` — Instagram caption generator
+- `assemble_output.py` — Output assembly
 
 ---
 
 ## Configuration
 
-### Environment Variables
+### Required Secrets
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `ANTHROPIC_API_KEY` | Yes | Claude API key for tone analysis and generation |
-| `FIRECRAWL_API_KEY` | No | Firecrawl API key (improves scraping reliability) |
+| Secret | Purpose | Required? |
+|--------|---------|-----------|
+| `ANTHROPIC_API_KEY` | Claude API for LLM calls | Yes |
+| `FIRECRAWL_API_KEY` | Firecrawl API for scraping | No (HTTP fallback) |
 
-### GitHub Secrets
+### Optional Environment Variables
 
-Set these in repo Settings > Secrets:
-- `ANTHROPIC_API_KEY`
-- `FIRECRAWL_API_KEY` (optional)
-
-### Customization
-
-Edit platform generation prompts in:
-- `tools/generate_twitter.py`
-- `tools/generate_linkedin.py`
-- `tools/generate_email.py`
-- `tools/generate_instagram.py`
-
-Adjust character targets, hashtag counts, tone instructions, etc.
+| Variable | Purpose | Default |
+|----------|---------|---------|
+| `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` | Enable parallel generation | `0` (disabled) |
 
 ---
 
-## Validation
+## Cost & Performance
 
-### Level 1: Syntax Check
+**Per Run**:
+- Firecrawl: $0.01-0.02 (1 scrape)
+- Claude: ~$0.09 (tone + 4 platforms)
+- **Total**: ~$0.10-0.11 per blog post
 
-```bash
-# Verify all tools are valid Python
-python -c "import ast; ast.parse(open('tools/scrape_blog_post.py').read())"
-python -c "import ast; ast.parse(open('tools/analyze_tone.py').read())"
-python -c "import ast; ast.parse(open('tools/generate_twitter.py').read())"
-python -c "import ast; ast.parse(open('tools/generate_linkedin.py').read())"
-python -c "import ast; ast.parse(open('tools/generate_email.py').read())"
-python -c "import ast; ast.parse(open('tools/generate_instagram.py').read())"
-python -c "import ast; ast.parse(open('tools/assemble_output.py').read())"
-```
-
-### Level 2: Unit Tests
-
-```bash
-# Test each tool with sample data
-python tools/scrape_blog_post.py --url "https://example.com/blog/test"
-# ... (see PRP for full test suite)
-```
-
-### Level 3: Integration Test
-
-```bash
-# Run full pipeline with a real blog post
-claude workflow.md --var blog_url="https://example.com/blog/sample"
-# Verify output file exists and has all 4 platforms
-```
+**Execution Time**:
+- Sequential: ~52-74 seconds
+- Parallel (Agent Teams): ~25-37 seconds
 
 ---
 
-## Contributing
+## Troubleshooting
 
-### Adding a New Platform
+| Issue | Solution |
+|-------|----------|
+| Scraping fails (404) | Check URL is correct and publicly accessible |
+| Scraping fails (paywall) | Content is behind authentication — cannot scrape |
+| Low tone confidence (< 0.7) | Content is too short or ambiguous — uses default profile |
+| Platform generation fails | Check Anthropic API key and rate limits |
+| Character count exceeded | Tool truncates automatically with "..." |
+| Missing dependencies | Run `pip install -r requirements.txt` |
 
-1. Create `tools/generate_PLATFORM.py` following existing tool patterns
-2. Add platform to `content-generator-specialist.md` subagent
-3. Update `assemble_output.py` to include new platform
-4. Add validation in workflow.md
-5. Update this README
+---
 
-### Improving Tone Matching
+## Documentation
 
-Edit `tools/analyze_tone.py`:
-- Add new dimensions to analysis schema
-- Adjust confidence thresholds
-- Refine LLM prompts
+- **CLAUDE.md**: Comprehensive operating instructions for Claude
+- **workflow.md**: Step-by-step workflow process
+- `.claude/agents/*.md`: Subagent specifications
 
 ---
 
 ## License
 
-[Your license here]
+MIT
+
+---
 
 ## Support
 
-Issues: [GitHub Issues](https://github.com/yourusername/content-repurposer/issues)
-Docs: [Full documentation](./docs/)
+For issues or questions, open a GitHub issue.

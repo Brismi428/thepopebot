@@ -1,16 +1,21 @@
-#!/usr/bin/env python3
 """
-analyze_tone.py
+Analyze Tone — Analyze writing style and tone of content using Claude
 
-Analyzes the tone and writing style of content using Claude.
-Returns structured tone profile with confidence score.
+Uses Claude API with structured JSON output to extract tone characteristics
+across multiple dimensions (formality, technical level, humor, emotion).
+
+Inputs:
+    - markdown_content (str): Content to analyze (via stdin or --content arg)
+
+Outputs:
+    - JSON: {formality, technical_level, humor_level, primary_emotion, confidence, rationale}
 
 Usage:
-    python analyze_tone.py --content "Blog post content here..."
-    echo '{"markdown_content": "..."}' | python analyze_tone.py --stdin
+    python analyze_tone.py --content "Your content here"
+    echo '{"markdown_content": "..."}' | python analyze_tone.py
 
-Output:
-    JSON with formality, technical_level, humor_level, primary_emotion, confidence, rationale
+Environment Variables:
+    - ANTHROPIC_API_KEY: Claude API key (required)
 """
 
 import argparse
@@ -18,229 +23,187 @@ import json
 import logging
 import os
 import sys
-from typing import Dict, Any
-
-try:
-    from anthropic import Anthropic
-    ANTHROPIC_AVAILABLE = True
-except ImportError:
-    ANTHROPIC_AVAILABLE = False
+from typing import Any
 
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
 
-# Tone analysis JSON schema
-TONE_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "formality": {
-            "type": "string",
-            "enum": ["formal", "semi-formal", "casual"],
-            "description": "Overall formality level of the writing"
-        },
-        "technical_level": {
-            "type": "string",
-            "enum": ["beginner", "intermediate", "advanced", "expert"],
-            "description": "Technical complexity and assumed audience knowledge"
-        },
-        "humor_level": {
-            "type": "string",
-            "enum": ["none", "low", "medium", "high"],
-            "description": "Presence and intensity of humor or playfulness"
-        },
-        "primary_emotion": {
-            "type": "string",
-            "description": "The dominant emotional tone (e.g., informative, inspiring, urgent, playful, serious)"
-        },
-        "confidence": {
-            "type": "number",
-            "minimum": 0,
-            "maximum": 1,
-            "description": "Confidence score for this analysis (0.0 = low, 1.0 = high)"
-        },
-        "rationale": {
-            "type": "string",
-            "description": "Brief explanation of the tone assessment"
-        }
-    },
-    "required": ["formality", "technical_level", "humor_level", "primary_emotion", "confidence", "rationale"]
+# Default tone profile for failures
+DEFAULT_TONE = {
+    "formality": "neutral",
+    "technical_level": "general",
+    "humor_level": "low",
+    "primary_emotion": "informative",
+    "confidence": 0.5,
+    "rationale": "Default tone profile due to analysis failure",
 }
 
 
-def get_default_tone() -> Dict[str, Any]:
-    """Return default/fallback tone profile."""
-    return {
-        "formality": "neutral",
-        "technical_level": "general",
-        "humor_level": "low",
-        "primary_emotion": "informative",
-        "confidence": 0.5,
-        "rationale": "Using default tone profile due to analysis failure or insufficient content"
-    }
-
-
-def analyze_tone_with_claude(content: str, retries: int = 2) -> Dict[str, Any]:
+def analyze_tone_with_claude(content: str) -> dict[str, Any]:
     """
-    Analyze content tone using Claude API with structured output.
-    
+    Analyze content tone using Claude API with structured extraction.
+
     Args:
         content: Markdown content to analyze
-        retries: Number of retry attempts on failure
-    
+
     Returns:
-        Dict with tone analysis results
-    
+        dict with tone dimensions and confidence score
+
     Raises:
-        Exception: If analysis fails after all retries
+        Exception: If Claude API call fails
     """
-    if not ANTHROPIC_AVAILABLE:
-        raise ImportError("anthropic package not installed")
-    
+    try:
+        from anthropic import Anthropic
+    except ImportError:
+        raise ImportError("anthropic package not installed. Install with: pip install anthropic")
+
     api_key = os.environ.get("ANTHROPIC_API_KEY")
     if not api_key:
         raise ValueError("ANTHROPIC_API_KEY environment variable not set")
-    
+
     client = Anthropic(api_key=api_key)
-    
-    system_prompt = """You are a writing style analyst. Analyze the tone, style, and characteristics of the provided content.
 
-Return your analysis as valid JSON matching this exact structure:
-{
-  "formality": "formal" | "semi-formal" | "casual",
-  "technical_level": "beginner" | "intermediate" | "advanced" | "expert",
-  "humor_level": "none" | "low" | "medium" | "high",
-  "primary_emotion": "brief description (e.g., informative, inspiring, urgent)",
-  "confidence": 0.0 to 1.0,
-  "rationale": "brief explanation of your assessment"
-}
+    # Define JSON schema for structured extraction
+    schema = {
+        "type": "object",
+        "properties": {
+            "formality": {
+                "type": "string",
+                "enum": ["formal", "semi-formal", "casual"],
+                "description": "Overall formality level of the writing",
+            },
+            "technical_level": {
+                "type": "string",
+                "enum": ["beginner", "intermediate", "advanced", "expert"],
+                "description": "Technical complexity and assumed audience knowledge",
+            },
+            "humor_level": {
+                "type": "string",
+                "enum": ["none", "low", "medium", "high"],
+                "description": "Presence and intensity of humor in the writing",
+            },
+            "primary_emotion": {
+                "type": "string",
+                "description": "Dominant emotional tone (e.g., informative, persuasive, inspiring, critical)",
+            },
+            "confidence": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1,
+                "description": "Confidence in this analysis (0.0 to 1.0)",
+            },
+            "rationale": {
+                "type": "string",
+                "description": "Brief explanation of the tone analysis",
+            },
+        },
+        "required": [
+            "formality",
+            "technical_level",
+            "humor_level",
+            "primary_emotion",
+            "confidence",
+            "rationale",
+        ],
+    }
 
-CRITICAL: Return ONLY valid JSON. No markdown fences, no commentary, no additional text."""
-    
-    for attempt in range(1, retries + 2):
-        try:
-            logger.info(f"Tone analysis attempt {attempt}/{retries + 1}")
-            
-            # Truncate content if too long (keep first 8000 chars)
-            analysis_content = content[:8000] if len(content) > 8000 else content
-            
-            message = client.messages.create(
-                model="claude-sonnet-4-20250514",
-                max_tokens=1024,
-                temperature=0.2,  # Lower temperature for more consistent analysis
-                system=system_prompt,
-                messages=[{
-                    "role": "user",
-                    "content": f"Analyze the tone of this content:\n\n{analysis_content}"
-                }]
-            )
-            
-            response_text = message.content[0].text.strip()
-            
-            # Strip markdown fences if present
-            if response_text.startswith("```"):
-                lines = response_text.split("\n")
-                response_text = "\n".join(lines[1:-1]).strip()
-            
-            # Parse JSON
-            tone_data = json.loads(response_text)
-            
-            # Validate required fields
-            required_fields = ["formality", "technical_level", "humor_level", "primary_emotion", "confidence", "rationale"]
-            missing = [f for f in required_fields if f not in tone_data]
-            if missing:
-                raise ValueError(f"Missing required fields in response: {missing}")
-            
-            # Validate confidence is a number between 0 and 1
-            conf = tone_data["confidence"]
-            if not isinstance(conf, (int, float)) or not 0 <= conf <= 1:
-                logger.warning(f"Invalid confidence value {conf}, defaulting to 0.7")
-                tone_data["confidence"] = 0.7
-            
-            logger.info(f"Tone analysis successful: formality={tone_data['formality']}, confidence={tone_data['confidence']}")
-            return tone_data
-        
-        except json.JSONDecodeError as e:
-            error_msg = f"JSON parsing failed: {str(e)}"
-            logger.warning(f"Attempt {attempt} failed: {error_msg}")
-            if attempt > retries:
-                raise ValueError(error_msg)
-        
-        except Exception as e:
-            logger.warning(f"Attempt {attempt} failed: {str(e)}")
-            if attempt > retries:
-                raise
-    
-    raise RuntimeError("Unreachable code reached")
+    system_prompt = f"""You are a writing style analyst. Analyze the tone and style of the provided content.
 
+Return your analysis as valid JSON matching this schema:
+{json.dumps(schema, indent=2)}
 
-def main(content: str) -> Dict[str, Any]:
-    """
-    Main tone analysis function.
-    
-    Args:
-        content: Markdown content to analyze
-    
-    Returns:
-        Dict with tone analysis or default profile on failure
-    """
-    # Validate content length
-    if not content or len(content.strip()) < 50:
-        logger.warning("Content too short for meaningful analysis")
-        default = get_default_tone()
-        default["rationale"] = "Content too short for analysis (< 50 characters)"
-        return default
-    
+Be precise and consider:
+- Formality: word choice, sentence structure, use of jargon
+- Technical level: assumed background knowledge, complexity of concepts
+- Humor: presence of jokes, wordplay, lighthearted tone
+- Primary emotion: what the author wants the reader to feel
+
+Return ONLY the JSON object, no markdown fences or commentary."""
+
+    logger.info("Sending tone analysis request to Claude (content length: %d chars)", len(content))
+
+    # Truncate content if too long (max ~100k chars for context)
+    if len(content) > 100000:
+        logger.warning("Content exceeds 100k chars, truncating for analysis")
+        content = content[:100000] + "\n\n[Content truncated for analysis]"
+
+    message = client.messages.create(
+        model="claude-sonnet-4-20250514",
+        max_tokens=2048,
+        temperature=0.0,
+        system=system_prompt,
+        messages=[{"role": "user", "content": content}],
+    )
+
+    response_text = message.content[0].text.strip()
+
+    # Strip markdown fences if present
+    if response_text.startswith("```"):
+        lines = response_text.split("\n")
+        response_text = "\n".join(lines[1:-1]) if len(lines) > 2 else response_text
+
+    # Parse JSON response
     try:
-        return analyze_tone_with_claude(content, retries=1)
-    
-    except Exception as e:
-        logger.error(f"Tone analysis failed: {str(e)}")
-        logger.warning("Returning default tone profile")
-        default = get_default_tone()
-        default["rationale"] = f"Analysis failed ({str(e)[:100]}), using defaults"
-        return default
+        result = json.loads(response_text)
+    except json.JSONDecodeError as e:
+        logger.error("Failed to parse Claude response as JSON: %s", e)
+        logger.debug("Raw response: %s", response_text)
+        raise ValueError(f"Claude returned invalid JSON: {e}") from e
+
+    logger.info("Tone analysis complete (confidence: %.2f)", result.get("confidence", 0.0))
+
+    return result
+
+
+def main() -> dict[str, Any]:
+    """
+    Main entry point for the tone analysis tool.
+
+    Returns:
+        dict: Tone analysis result or default tone profile on failure.
+    """
+    parser = argparse.ArgumentParser(description="Analyze content tone using Claude")
+    parser.add_argument("--content", help="Content to analyze (alternative to stdin)")
+    args = parser.parse_args()
+
+    # Get content from arg or stdin
+    if args.content:
+        content = args.content
+    else:
+        # Read from stdin (JSON with markdown_content field)
+        try:
+            stdin_data = json.load(sys.stdin)
+            content = stdin_data.get("markdown_content", "")
+        except json.JSONDecodeError:
+            logger.error("Failed to parse stdin as JSON")
+            return DEFAULT_TONE
+        except Exception as e:
+            logger.error("Error reading stdin: %s", e)
+            return DEFAULT_TONE
+
+    if not content or len(content.strip()) < 50:
+        logger.warning("Content is too short for meaningful analysis (< 50 chars)")
+        return DEFAULT_TONE
+
+    logger.info("Starting tone analysis (content length: %d chars)", len(content))
+
+    # Try tone analysis with retry
+    max_retries = 2
+    for attempt in range(1, max_retries + 1):
+        try:
+            result = analyze_tone_with_claude(content)
+            return result
+        except Exception as e:
+            logger.warning("Tone analysis attempt %d/%d failed: %s", attempt, max_retries, str(e))
+            if attempt == max_retries:
+                logger.error("All tone analysis attempts failed. Returning default profile.")
+                return DEFAULT_TONE
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Analyze tone and writing style of content"
-    )
-    group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument(
-        "--content",
-        help="Content to analyze (direct string)"
-    )
-    group.add_argument(
-        "--stdin",
-        action="store_true",
-        help="Read JSON from stdin with 'markdown_content' key"
-    )
-    args = parser.parse_args()
-    
-    try:
-        if args.stdin:
-            input_data = json.load(sys.stdin)
-            content = input_data.get("markdown_content", "")
-        else:
-            content = args.content
-        
-        if not content:
-            logger.error("No content provided for analysis")
-            print(json.dumps(get_default_tone(), indent=2))
-            sys.exit(1)
-        
-        result = main(content)
-        print(json.dumps(result, indent=2, ensure_ascii=False))
-        sys.exit(0)
-    
-    except Exception as e:
-        logger.exception("Unexpected error during tone analysis")
-        error_result = get_default_tone()
-        error_result["rationale"] = f"Fatal error: {str(e)}"
-        error_result["confidence"] = 0.0
-        print(json.dumps(error_result, indent=2, ensure_ascii=False))
-        sys.exit(1)
+    result = main()
+    print(json.dumps(result, indent=2, ensure_ascii=False))
