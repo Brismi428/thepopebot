@@ -1,14 +1,22 @@
-#!/usr/bin/env python3
 """
-generate_email.py
+Generate Email — Generate email newsletter section from content matching source tone
 
-Generates an email newsletter section from blog content and tone analysis.
+Creates an email newsletter section with subject line, HTML body, plain text fallback,
+and call-to-action. Target 500-800 words for optimal engagement.
+
+Inputs:
+    - markdown_content (str): Source content
+    - tone_analysis (dict): Tone profile from analyze_tone.py
+    - source_url (str): Link back to original blog post
+
+Outputs:
+    - JSON: {subject_line, section_html, section_text, word_count, cta}
 
 Usage:
-    python generate_email.py --content-file content.json --tone-file tone.json --source-url URL
+    python generate_email.py --content "..." --tone '{"formality": "casual", ...}' --url "https://..."
 
-Output:
-    JSON with subject_line, section_html, section_text, word_count, cta
+Environment Variables:
+    - ANTHROPIC_API_KEY: Claude API key (required)
 """
 
 import argparse
@@ -16,164 +24,180 @@ import json
 import logging
 import os
 import sys
-from typing import Dict, Any
+from typing import Any
 
-try:
-    from anthropic import Anthropic
-    import markdown
-    DEPS_AVAILABLE = True
-except ImportError:
-    DEPS_AVAILABLE = False
-
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+)
 logger = logging.getLogger(__name__)
 
 
 def generate_email_section(
-    content: str,
-    tone_analysis: Dict[str, Any],
-    source_url: str = ""
-) -> Dict[str, Any]:
-    """Generate email newsletter section matching source tone."""
-    
-    if not DEPS_AVAILABLE:
-        raise ImportError("anthropic and markdown packages required")
-    
+    content: str, tone: dict[str, Any], source_url: str = ""
+) -> dict[str, Any]:
+    """
+    Generate email newsletter section using Claude API.
+
+    Args:
+        content: Source markdown content
+        tone: Tone analysis dict
+        source_url: Link back to original blog post
+
+    Returns:
+        dict with subject_line, section_html, section_text, word_count, cta
+
+    Raises:
+        Exception: If Claude API call fails
+    """
+    try:
+        from anthropic import Anthropic
+        import markdown
+    except ImportError:
+        raise ImportError(
+            "Required packages not installed. Install with: pip install anthropic markdown"
+        )
+
     api_key = os.environ.get("ANTHROPIC_API_KEY")
     if not api_key:
-        raise ValueError("ANTHROPIC_API_KEY not set")
-    
+        raise ValueError("ANTHROPIC_API_KEY environment variable not set")
+
     client = Anthropic(api_key=api_key)
-    
-    system_prompt = f"""You are an email newsletter writer.
 
-Generate an email newsletter section from the provided blog content.
+    # Build system prompt with tone matching instructions
+    system_prompt = f"""You are an email newsletter writer. Generate an email newsletter section from the provided content.
 
-TONE REQUIREMENTS:
-- Formality: {tone_analysis.get('formality', 'neutral')}
-- Technical level: {tone_analysis.get('technical_level', 'general')}
-- Humor: {tone_analysis.get('humor_level', 'low')}
-- Emotion: {tone_analysis.get('primary_emotion', 'informative')}
+**Source Tone Profile**:
+- Formality: {tone.get('formality', 'neutral')}
+- Technical Level: {tone.get('technical_level', 'general')}
+- Humor Level: {tone.get('humor_level', 'low')}
+- Primary Emotion: {tone.get('primary_emotion', 'informative')}
 
-EMAIL BEST PRACTICES:
-- Subject line: 40-60 chars, curiosity gap or clear benefit
-- Scannable format: clear subheadings, short paragraphs
-- Bullet points for lists
-- Bold key phrases for emphasis (use **bold** in markdown)
-- Direct, conversational tone (slightly more personal than blog)
-- Clear call-to-action with link to original post
-- Target 500-800 words (3-5 minute read)
-- Include brief intro that hooks the reader
+**CRITICAL: Match this tone exactly**. Email should feel like it came from the same author as the source content.
 
-Return your response as MARKDOWN format. I will convert it to HTML.
+**Email Newsletter Constraints**:
+- Subject line: 40-60 characters, compelling and clear
+- Body: 500-800 words (target for newsletter section, not full article)
+- Structure: Clear sections with headings (H2, H3)
+- Scannable: Short paragraphs (2-3 sentences), bullet points where appropriate
+- Call-to-action: Link back to full article with compelling CTA
+- Tone: Match source but optimize for email (conversational, direct)
 
-Return ONLY valid JSON:
+**Original Article URL**: {source_url or 'Not provided'}
+
+Return the body in MARKDOWN format (we'll convert to HTML). Return ONLY valid JSON (no markdown fences):
 {{
-  "subject_line": "Compelling subject line",
-  "content_markdown": "## Subheading\\n\\nContent with **bold** and bullet points:\\n- Point 1\\n- Point 2",
-  "cta": "Read the full article here: [link]"
+  "subject_line": "Compelling subject line here",
+  "section_markdown": "## Heading\\n\\nParagraph...\\n\\n- Bullet point\\n- Another point\\n\\n[Read the full article]({source_url})",
+  "word_count": 672,
+  "cta": "Read the full article: [link]"
 }}"""
-    
-    user_prompt = f"Blog content to convert into email newsletter section:\n\n{content[:7000]}"
-    if source_url:
-        user_prompt += f"\n\nOriginal blog post URL (for CTA link): {source_url}"
-    
-    logger.info("Generating email newsletter section...")
-    
+
+    logger.info("Generating email section (content length: %d chars)", len(content))
+
+    # Truncate content if too long
+    if len(content) > 50000:
+        logger.warning("Content exceeds 50k chars, truncating for generation")
+        content = content[:50000] + "\n\n[Content truncated]"
+
+    message = client.messages.create(
+        model="claude-sonnet-4-20250514",
+        max_tokens=4096,
+        temperature=0.3,
+        system=system_prompt,
+        messages=[{"role": "user", "content": content}],
+    )
+
+    response_text = message.content[0].text.strip()
+
+    # Strip markdown fences if present
+    if response_text.startswith("```"):
+        lines = response_text.split("\n")
+        response_text = "\n".join(lines[1:-1]) if len(lines) > 2 else response_text
+
+    # Parse JSON response
     try:
-        message = client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=4096,
-            temperature=0.7,
-            system=system_prompt,
-            messages=[{"role": "user", "content": user_prompt}]
-        )
-        
-        response_text = message.content[0].text.strip()
-        
-        # Strip markdown fences
-        if response_text.startswith("```"):
-            lines = response_text.split("\n")
-            response_text = "\n".join(lines[1:-1]).strip()
-        
         result = json.loads(response_text)
-        
-        # Validate required fields
-        if "content_markdown" not in result:
-            raise ValueError("Missing 'content_markdown' field in response")
-        
-        md_content = result["content_markdown"]
-        
-        # Convert markdown to HTML
-        section_html = markdown.markdown(md_content, extensions=['extra', 'nl2br'])
-        
-        # Plain text version (strip HTML tags roughly)
-        import re
-        section_text = re.sub(r'<[^>]+>', '', section_html)
-        section_text = re.sub(r'\n\n+', '\n\n', section_text).strip()
-        
-        # Count words
-        word_count = len(section_text.split())
-        
-        logger.info(f"Generated email section: {word_count} words")
-        
-        return {
-            "subject_line": result.get("subject_line", "New Article"),
-            "section_html": section_html,
-            "section_text": section_text,
-            "word_count": word_count,
-            "cta": result.get("cta", f"Read more: {source_url}")
-        }
-    
-    except Exception as e:
-        logger.error(f"Generation failed: {str(e)}")
-        raise
+    except json.JSONDecodeError as e:
+        logger.error("Failed to parse Claude response as JSON: %s", e)
+        logger.debug("Raw response: %s", response_text)
+        raise ValueError(f"Claude returned invalid JSON: {e}") from e
+
+    # Convert markdown to HTML
+    section_markdown = result.get("section_markdown", "")
+    section_html = markdown.markdown(
+        section_markdown,
+        extensions=["nl2br", "sane_lists"],
+    )
+
+    # Generate plain text version (strip HTML, clean up)
+    import re
+    section_text = re.sub(r"<[^>]+>", "", section_html)
+    section_text = re.sub(r"\n{3,}", "\n\n", section_text)  # Collapse multiple newlines
+
+    # Update word count (count actual words in markdown)
+    words = len(section_markdown.split())
+    result["word_count"] = words
+
+    # Add HTML and text versions to result
+    result["section_html"] = section_html
+    result["section_text"] = section_text.strip()
+
+    logger.info("Email section generated (%d words)", words)
+
+    return result
 
 
-def main(
-    content: str,
-    tone_analysis: Dict[str, Any],
-    source_url: str = ""
-) -> Dict[str, Any]:
-    """Main generation function with error handling."""
-    
+def main() -> dict[str, Any]:
+    """
+    Main entry point for the email generator tool.
+
+    Returns:
+        dict: Email section result.
+    """
+    parser = argparse.ArgumentParser(description="Generate email newsletter section from content")
+    parser.add_argument("--content", help="Markdown content (alternative to stdin)")
+    parser.add_argument("--tone", help="Tone analysis JSON string")
+    parser.add_argument("--url", default="", help="Source URL to link back to")
+    args = parser.parse_args()
+
+    # Get inputs
+    if args.content and args.tone:
+        content = args.content
+        tone = json.loads(args.tone)
+    else:
+        # Read from stdin (JSON with markdown_content, tone_analysis, source_url fields)
+        try:
+            stdin_data = json.load(sys.stdin)
+            content = stdin_data.get("markdown_content", "")
+            tone = stdin_data.get("tone_analysis", {})
+            if not args.url:
+                args.url = stdin_data.get("source_url", "")
+        except json.JSONDecodeError as e:
+            logger.error("Failed to parse stdin as JSON: %s", e)
+            sys.exit(1)
+
+    logger.info("Starting email generation")
+
     try:
-        return generate_email_section(content, tone_analysis, source_url)
+        result = generate_email_section(content, tone, args.url)
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+        return result
     except Exception as e:
-        logger.error(f"Email generation failed: {str(e)}")
-        return {
+        logger.error("Email generation failed: %s", str(e))
+        error_result = {
             "status": "generation_failed",
-            "error": str(e),
+            "message": str(e),
             "subject_line": "",
             "section_html": "",
             "section_text": "",
             "word_count": 0,
-            "cta": ""
+            "cta": "",
         }
+        print(json.dumps(error_result, indent=2, ensure_ascii=False))
+        sys.exit(1)
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Generate email newsletter section")
-    parser.add_argument("--content-file", required=True, help="JSON file with markdown_content")
-    parser.add_argument("--tone-file", required=True, help="JSON file with tone analysis")
-    parser.add_argument("--source-url", default="", help="Original blog post URL")
-    
-    args = parser.parse_args()
-    
-    try:
-        with open(args.content_file) as f:
-            content_data = json.load(f)
-        with open(args.tone_file) as f:
-            tone_data = json.load(f)
-        
-        content = content_data.get("markdown_content", "")
-        
-        result = main(content, tone_data, args.source_url)
-        print(json.dumps(result, indent=2, ensure_ascii=False))
-        
-        sys.exit(0 if result.get("status") != "generation_failed" else 1)
-    
-    except Exception as e:
-        logger.exception("Fatal error")
-        print(json.dumps({"status": "generation_failed", "error": str(e)}, indent=2))
-        sys.exit(1)
+    main()

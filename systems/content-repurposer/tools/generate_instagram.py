@@ -1,36 +1,51 @@
-#!/usr/bin/env python3
 """
-generate_instagram.py
+Generate Instagram — Generate Instagram caption from content matching source tone
 
-Generates an optimized Instagram caption from blog content and tone analysis.
+Creates an Instagram caption with emojis, line breaks, hashtags, and engaging hooks.
+Target 1500-2000 chars with 10-15 hashtags for optimal reach.
+
+Inputs:
+    - markdown_content (str): Source content
+    - tone_analysis (dict): Tone profile from analyze_tone.py
+    - brand_hashtags (list[str], optional): Brand hashtags to include
+
+Outputs:
+    - JSON: {caption, char_count, hashtags, line_break_count, emoji_count}
 
 Usage:
-    python generate_instagram.py --content-file content.json --tone-file tone.json
+    python generate_instagram.py --content "..." --tone '{"formality": "casual", ...}'
 
-Output:
-    JSON with caption, char_count, hashtags, line_break_count, emoji_count
+Environment Variables:
+    - ANTHROPIC_API_KEY: Claude API key (required)
 """
 
 import argparse
 import json
 import logging
 import os
-import re
 import sys
-from typing import Dict, Any, List
+import re
+from typing import Any
 
-try:
-    from anthropic import Anthropic
-    ANTHROPIC_AVAILABLE = True
-except ImportError:
-    ANTHROPIC_AVAILABLE = False
-
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+)
 logger = logging.getLogger(__name__)
 
 
 def count_emojis(text: str) -> int:
-    """Count emoji characters in text."""
+    """
+    Count emoji characters in text.
+
+    Args:
+        text: Text to analyze
+
+    Returns:
+        int: Number of emojis found
+    """
+    # Unicode ranges for emojis (simplified)
     emoji_pattern = re.compile(
         "["
         "\U0001F600-\U0001F64F"  # emoticons
@@ -40,170 +55,193 @@ def count_emojis(text: str) -> int:
         "\U00002702-\U000027B0"
         "\U000024C2-\U0001F251"
         "]+",
-        flags=re.UNICODE
+        flags=re.UNICODE,
     )
     return len(emoji_pattern.findall(text))
 
 
 def generate_instagram_caption(
-    content: str,
-    tone_analysis: Dict[str, Any],
-    brand_hashtags: List[str] = None
-) -> Dict[str, Any]:
-    """Generate Instagram caption matching source tone."""
-    
-    if not ANTHROPIC_AVAILABLE:
-        raise ImportError("anthropic package required")
-    
+    content: str, tone: dict[str, Any], brand_hashtags: list[str] | None = None
+) -> dict[str, Any]:
+    """
+    Generate Instagram caption using Claude API.
+
+    Args:
+        content: Source markdown content
+        tone: Tone analysis dict
+        brand_hashtags: Optional list of brand hashtags
+
+    Returns:
+        dict with caption, char_count, hashtags, line_break_count, emoji_count
+
+    Raises:
+        Exception: If Claude API call fails or validation fails
+    """
+    try:
+        from anthropic import Anthropic
+    except ImportError:
+        raise ImportError("anthropic package not installed. Install with: pip install anthropic")
+
     api_key = os.environ.get("ANTHROPIC_API_KEY")
     if not api_key:
-        raise ValueError("ANTHROPIC_API_KEY not set")
-    
+        raise ValueError("ANTHROPIC_API_KEY environment variable not set")
+
     client = Anthropic(api_key=api_key)
-    brand_tags = brand_hashtags or []
-    
-    system_prompt = f"""You are an Instagram content creator.
 
-Generate an Instagram caption from the provided blog content.
+    # Build system prompt with tone matching instructions
+    system_prompt = f"""You are an Instagram content strategist. Generate an Instagram caption from the provided content.
 
-TONE REQUIREMENTS:
-- Formality: {tone_analysis.get('formality', 'casual')} (Instagram defaults more casual)
-- Technical level: {tone_analysis.get('technical_level', 'general')}
-- Humor: {tone_analysis.get('humor_level', 'medium')}
-- Emotion: {tone_analysis.get('primary_emotion', 'inspiring')}
+**Source Tone Profile**:
+- Formality: {tone.get('formality', 'neutral')}
+- Technical Level: {tone.get('technical_level', 'general')}
+- Humor Level: {tone.get('humor_level', 'low')}
+- Primary Emotion: {tone.get('primary_emotion', 'informative')}
 
-INSTAGRAM BEST PRACTICES:
-- Hook in first 1-2 lines (before "more" button)
-- Line breaks every 2-3 sentences for readability
-- Use 3-5 emojis strategically (not excessive)
-- Visual storytelling (caption must work standalone)
-- Conversational, engaging tone
-- Lists or numbered points work well
-- Strong call-to-action (comment, tag, save, share)
-- Target 1500-2000 characters (sweet spot)
+**CRITICAL: Match this tone**. If the source is casual, be Instagram-friendly casual. If formal, maintain professionalism but adapt to Instagram's visual, conversational style.
+
+**Instagram Caption Constraints**:
+- Target 1500-2000 characters for optimal engagement
 - Maximum 2200 characters (hard limit)
-- 10-15 hashtags (mix of broad, niche, branded)
-- Hashtag format: lowercase, alphanumeric + underscores only
+- Start with a HOOK (first line grabs attention, shows before "more" button)
+- Use line breaks for readability (every 2-3 sentences)
+- Include 3-5 relevant emojis (not excessive, strategic placement)
+- End with 10-15 hashtags (lowercase, no spaces, alphanumeric + underscores only)
+- Mix popular and niche hashtags for reach + engagement
+- Conversational, engaging tone
 
-Return ONLY valid JSON:
+**Brand Hashtags to Include**: {', '.join(brand_hashtags) if brand_hashtags else 'None'}
+
+Return ONLY valid JSON in this exact structure (no markdown fences):
 {{
-  "caption": "Caption text with\\n\\nline breaks and emojis 💡",
-  "hashtags": ["#marketing", "#contentcreator", "#tips"]
+  "caption": "Hook line here 🔥\\n\\nBody paragraph with insights...\\n\\nAnother paragraph...\\n\\n#hashtag1 #hashtag2 #hashtag3",
+  "char_count": 1847,
+  "hashtags": ["#marketing", "#contentcreation", "#socialmedia"],
+  "line_break_count": 4,
+  "emoji_count": 3
 }}"""
-    
-    user_prompt = f"Blog content to convert into Instagram caption:\n\n{content[:6000]}"
-    if brand_tags:
-        user_prompt += f"\n\nBrand hashtags to include: {', '.join(brand_tags)}"
-    
-    logger.info("Generating Instagram caption...")
-    
+
+    logger.info("Generating Instagram caption (content length: %d chars)", len(content))
+
+    # Truncate content if too long
+    if len(content) > 50000:
+        logger.warning("Content exceeds 50k chars, truncating for generation")
+        content = content[:50000] + "\n\n[Content truncated]"
+
+    message = client.messages.create(
+        model="claude-sonnet-4-20250514",
+        max_tokens=4096,
+        temperature=0.3,
+        system=system_prompt,
+        messages=[{"role": "user", "content": content}],
+    )
+
+    response_text = message.content[0].text.strip()
+
+    # Strip markdown fences if present
+    if response_text.startswith("```"):
+        lines = response_text.split("\n")
+        response_text = "\n".join(lines[1:-1]) if len(lines) > 2 else response_text
+
+    # Parse JSON response
     try:
-        message = client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=4096,
-            temperature=0.8,  # Slightly higher for creative Instagram content
-            system=system_prompt,
-            messages=[{"role": "user", "content": user_prompt}]
-        )
-        
-        response_text = message.content[0].text.strip()
-        
-        # Strip markdown fences
-        if response_text.startswith("```"):
-            lines = response_text.split("\n")
-            response_text = "\n".join(lines[1:-1]).strip()
-        
         result = json.loads(response_text)
-        
-        # Validate required fields
-        if "caption" not in result:
-            raise ValueError("Missing 'caption' field in response")
-        
-        caption = result["caption"]
-        
-        # Calculate metrics
-        char_count = len(caption)
-        line_break_count = caption.count("\n")
-        emoji_count = count_emojis(caption)
-        
-        # Validate caption length
-        if char_count > 2200:
-            logger.warning(f"Caption exceeds 2200 chars ({char_count}). Truncating.")
-            caption = caption[:2197] + "..."
-            char_count = 2200
-        
-        # Validate hashtag format
-        hashtags = result.get("hashtags", [])
-        clean_hashtags = []
-        for tag in hashtags:
-            # Remove # if present, lowercase, keep only alphanumeric and underscores
-            clean_tag = re.sub(r'[^a-z0-9_]', '', tag.lower().lstrip('#'))
-            if clean_tag:
-                clean_hashtags.append(f"#{clean_tag}")
-        
-        # Limit to 15 hashtags
-        clean_hashtags = clean_hashtags[:15]
-        
-        logger.info(f"Generated Instagram caption: {char_count} chars, {emoji_count} emojis, {len(clean_hashtags)} hashtags")
-        
-        return {
-            "caption": caption,
-            "char_count": char_count,
-            "hashtags": clean_hashtags,
-            "line_break_count": line_break_count,
-            "emoji_count": emoji_count
-        }
-    
-    except Exception as e:
-        logger.error(f"Generation failed: {str(e)}")
-        raise
+    except json.JSONDecodeError as e:
+        logger.error("Failed to parse Claude response as JSON: %s", e)
+        logger.debug("Raw response: %s", response_text)
+        raise ValueError(f"Claude returned invalid JSON: {e}") from e
+
+    # Validate and update character count
+    caption_text = result.get("caption", "")
+    actual_length = len(caption_text)
+    result["char_count"] = actual_length
+
+    if actual_length > 2200:
+        logger.warning("Instagram caption exceeds 2200 chars (%d), truncating", actual_length)
+        result["caption"] = caption_text[:2197] + "..."
+        result["char_count"] = 2200
+
+    # Count line breaks and emojis
+    line_breaks = caption_text.count("\n")
+    emoji_count = count_emojis(caption_text)
+
+    result["line_break_count"] = line_breaks
+    result["emoji_count"] = emoji_count
+
+    # Validate hashtags are lowercase alphanumeric + underscores
+    hashtags = result.get("hashtags", [])
+    validated_hashtags = []
+    for tag in hashtags:
+        # Remove # if present, lowercase, validate format
+        clean_tag = tag.lstrip("#").lower()
+        if re.match(r"^[a-z0-9_]+$", clean_tag):
+            validated_hashtags.append(f"#{clean_tag}")
+        else:
+            logger.warning("Invalid hashtag format (skipping): %s", tag)
+
+    result["hashtags"] = validated_hashtags
+
+    logger.info(
+        "Instagram caption generated (%d chars, %d line breaks, %d emojis, %d hashtags)",
+        actual_length,
+        line_breaks,
+        emoji_count,
+        len(validated_hashtags),
+    )
+
+    return result
 
 
-def main(
-    content: str,
-    tone_analysis: Dict[str, Any],
-    brand_hashtags: List[str] = None
-) -> Dict[str, Any]:
-    """Main generation function with error handling."""
-    
+def main() -> dict[str, Any]:
+    """
+    Main entry point for the Instagram generator tool.
+
+    Returns:
+        dict: Instagram caption result.
+    """
+    parser = argparse.ArgumentParser(description="Generate Instagram caption from content")
+    parser.add_argument("--content", help="Markdown content (alternative to stdin)")
+    parser.add_argument("--tone", help="Tone analysis JSON string")
+    parser.add_argument("--brand-hashtags", help="Comma-separated brand hashtags")
+    args = parser.parse_args()
+
+    # Get inputs
+    if args.content and args.tone:
+        content = args.content
+        tone = json.loads(args.tone)
+    else:
+        # Read from stdin (JSON with markdown_content and tone_analysis fields)
+        try:
+            stdin_data = json.load(sys.stdin)
+            content = stdin_data.get("markdown_content", "")
+            tone = stdin_data.get("tone_analysis", {})
+        except json.JSONDecodeError as e:
+            logger.error("Failed to parse stdin as JSON: %s", e)
+            sys.exit(1)
+
+    brand_hashtags = []
+    if args.brand_hashtags:
+        brand_hashtags = [tag.strip() for tag in args.brand_hashtags.split(",")]
+
+    logger.info("Starting Instagram generation")
+
     try:
-        return generate_instagram_caption(content, tone_analysis, brand_hashtags)
+        result = generate_instagram_caption(content, tone, brand_hashtags)
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+        return result
     except Exception as e:
-        logger.error(f"Instagram generation failed: {str(e)}")
-        return {
+        logger.error("Instagram generation failed: %s", str(e))
+        error_result = {
             "status": "generation_failed",
-            "error": str(e),
+            "message": str(e),
             "caption": "",
             "char_count": 0,
             "hashtags": [],
             "line_break_count": 0,
-            "emoji_count": 0
+            "emoji_count": 0,
         }
+        print(json.dumps(error_result, indent=2, ensure_ascii=False))
+        sys.exit(1)
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Generate Instagram caption")
-    parser.add_argument("--content-file", required=True, help="JSON file with markdown_content")
-    parser.add_argument("--tone-file", required=True, help="JSON file with tone analysis")
-    parser.add_argument("--brand-hashtags", default="", help="Comma-separated brand hashtags")
-    
-    args = parser.parse_args()
-    
-    try:
-        with open(args.content_file) as f:
-            content_data = json.load(f)
-        with open(args.tone_file) as f:
-            tone_data = json.load(f)
-        
-        content = content_data.get("markdown_content", "")
-        brand_tags = [t.strip() for t in args.brand_hashtags.split(",") if t.strip()] if args.brand_hashtags else []
-        
-        result = main(content, tone_data, brand_tags)
-        print(json.dumps(result, indent=2, ensure_ascii=False))
-        
-        sys.exit(0 if result.get("status") != "generation_failed" else 1)
-    
-    except Exception as e:
-        logger.exception("Fatal error")
-        print(json.dumps({"status": "generation_failed", "error": str(e)}, indent=2))
-        sys.exit(1)
+    main()

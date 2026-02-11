@@ -2,332 +2,148 @@
 
 Multi-channel content repurposing system that transforms blog posts into platform-optimized social media content.
 
----
-
 ## Inputs
 
-- **blog_url** (string, required): Full URL of the blog post to repurpose. Must be publicly accessible.
+- **blog_url** (string): Full URL of the blog post to repurpose. Must be publicly accessible.
 - **author_handle** (string, optional): Author's social media handle to include in mentions (without @)
-- **brand_hashtags** (list of strings, optional): Brand-specific hashtags to include in every output
+- **brand_hashtags** (list[string], optional): Brand-specific hashtags to include in every output
 
 ## Outputs
 
-- **JSON file**: `output/{timestamp}-{slug}.json` containing all platform-optimized versions
-  - Twitter thread with tweet-by-tweet breakdown
-  - LinkedIn post with character count and hashtags
-  - Email newsletter section (HTML + plain text)
-  - Instagram caption with hashtags and formatting
-  - Source metadata and tone analysis
+- **repurposed_content.json**: Single JSON file in `output/{timestamp}-{slug}.json` containing:
+  - Source metadata (URL, title, generated timestamp)
+  - Tone analysis (formality, technical level, humor, emotion, confidence)
+  - Platform-optimized content for Twitter, LinkedIn, email, and Instagram
+  - Character counts, hashtag suggestions, and formatting metadata for each platform
 
 ---
 
 ## Step 1: Scrape Blog Post
 
-**Purpose**: Fetch the blog post content from the provided URL and extract clean markdown.
+Fetch the blog post content from the provided URL and extract clean markdown.
 
-**Delegate to**: `content-scraper-specialist` subagent
+1. Receive `blog_url` from workflow input (GitHub Actions dispatch, CLI arg, or Agent HQ issue)
+2. Delegate to `content-scraper-specialist` subagent
+3. The subagent calls `tools/scrape_blog_post.py --url <blog_url>`
+4. The tool attempts Firecrawl API scraping first
+5. If Firecrawl fails (API error, timeout, 404), fall back to HTTP + BeautifulSoup extraction
+6. Extract clean markdown content, title, author, publish date from the page
+7. Return structured output: `{status, markdown_content, title, author, publish_date, url, error}`
 
-**Process**:
-1. Validate the blog_url format (must be a valid HTTP/HTTPS URL)
-2. Call `scrape_blog_post.py` with the URL
-3. The tool attempts to fetch content using Firecrawl API
-4. If Firecrawl fails, fall back to direct HTTP + BeautifulSoup extraction
-5. Extract metadata: title, author, publish date
-6. Convert extracted content to clean markdown format
-7. Return structured data with content and metadata
+**Decision point**: **If scraping fails (both Firecrawl and HTTP fallback)**:
+- **Yes (failed)**: Return error structure with `status: 'scrape_failed'` and detailed error message. Halt workflow and log failure.
+- **No (succeeded)**: Continue to Step 2 with markdown content
 
-**Success output**:
-```json
-{
-  "status": "success",
-  "markdown_content": "# Blog Post Title\n\nContent here...",
-  "title": "Blog Post Title",
-  "author": "Author Name",
-  "publish_date": "2026-02-11",
-  "url": "https://example.com/blog/post"
-}
-```
+**Tool**: `tools/scrape_blog_post.py` — Fetches and extracts content from blog post URL
 
-**Failure Modes**:
-- URL is unreachable (404, timeout, network error)
-- Content is behind a paywall or login wall
-- Page has no extractable article content (homepage, search results, etc.)
-- Both Firecrawl and HTTP fallback fail
+**Failure mode**: URL is unreachable, paywalled, or returns invalid HTML. Both Firecrawl and HTTP fail.
 
-**Fallback**:
-- Return error status: `{"status": "error", "error": "Failed to fetch content: {details}", ...}`
-- Halt workflow and report error to user via GitHub Actions output
-- Do NOT proceed to tone analysis with no content
+**Fallback**: Return error structure, halt workflow, log full error details for debugging. Do NOT proceed with empty content.
 
 ---
 
 ## Step 2: Analyze Tone
 
-**Purpose**: Analyze the writing style and tone of the source content to enable accurate tone matching in generated outputs.
+Analyze the writing style and tone of the source content using Claude.
 
-**Delegate to**: `tone-analyzer-specialist` subagent
+1. Receive `markdown_content` from Step 1
+2. Delegate to `tone-analyzer-specialist` subagent
+3. The subagent calls `tools/analyze_tone.py` with the markdown content
+4. The tool uses Claude API with structured JSON output to analyze tone across dimensions:
+   - formality: "formal" | "semi-formal" | "casual"
+   - technical_level: "beginner" | "intermediate" | "advanced" | "expert"
+   - humor_level: "none" | "low" | "medium" | "high"
+   - primary_emotion: (string describing dominant emotion)
+   - confidence: (float 0.0-1.0)
+   - rationale: (string explaining the analysis)
+5. Validate the response against JSON schema
+6. Return tone analysis structure
 
-**Process**:
-1. Receive markdown_content from Step 1
-2. Call `analyze_tone.py` with the content
-3. Send content to Claude with structured JSON schema for tone analysis
-4. Analyze across 5 dimensions:
-   - **Formality**: formal | semi-formal | casual
-   - **Technical level**: beginner | intermediate | advanced | expert
-   - **Humor level**: none | low | medium | high
-   - **Primary emotion**: e.g., informative, inspiring, urgent, playful
-   - **Confidence**: 0.0-1.0 (how confident the analysis is)
-5. Return structured tone profile with rationale
+**Decision point**: **If LLM API call fails or content is too short/garbled**:
+- **Yes (failed)**: Return default neutral tone profile: `{formality: 'neutral', technical_level: 'general', humor_level: 'low', primary_emotion: 'informative', confidence: 0.5}`. Log warning and continue.
+- **No (succeeded)**: Use the analyzed tone profile for platform generation
 
-**Success output**:
-```json
-{
-  "formality": "semi-formal",
-  "technical_level": "intermediate",
-  "humor_level": "low",
-  "primary_emotion": "informative",
-  "confidence": 0.85,
-  "rationale": "The content uses professional language with occasional casual phrases..."
-}
-```
+**Tool**: `tools/analyze_tone.py` — Analyzes content tone using Claude with structured extraction
 
-**Failure Modes**:
-- LLM API error (rate limit, timeout, authentication failure)
-- Content is too short or garbled to analyze meaningfully
-- JSON schema validation fails on LLM response
+**Failure mode**: LLM API error (rate limit, timeout, auth failure) or content is too short (< 50 chars) to analyze meaningfully
 
-**Fallback**:
-- Retry LLM call once with exponential backoff (wait 5 seconds)
-- If still fails, return default tone profile:
-  ```json
-  {
-    "formality": "neutral",
-    "technical_level": "general",
-    "humor_level": "low",
-    "primary_emotion": "informative",
-    "confidence": 0.5,
-    "rationale": "Using default tone profile due to analysis failure"
-  }
-  ```
-- Log warning but continue workflow
-- Quality may be reduced, but system remains functional
+**Fallback**: Return default tone profile with low confidence (0.5). Log warning but continue workflow. Platform content will be generated with generic tone matching.
 
 ---
 
-## Step 3: Generate Platform Content (Parallel Execution)
+## Step 3: Generate Platform Content (Parallel with Agent Teams)
 
-**Purpose**: Generate optimized content for all 4 platforms in parallel using Agent Teams for maximum speed.
+Generate optimized content for all 4 platforms in parallel using Agent Teams.
 
-**Execution Mode**: Agent Teams (4 parallel teammates)
+**Agent Teams mode**: If `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` is set, the content-generator-specialist delegates to 4 teammates in parallel. Otherwise, sequential execution.
 
-**Coordinator**: `content-generator-specialist` subagent (team lead)
+### Parallel Execution (Agent Teams Enabled)
 
-**Team Lead Process**:
-1. Receive markdown_content, tone_analysis, author_handle, brand_hashtags from previous steps
-2. Create shared task list with 4 independent platform generation tasks
-3. Spawn 4 teammates in parallel:
-   - `twitter-generator` teammate
-   - `linkedin-generator` teammate
-   - `email-generator` teammate
-   - `instagram-generator` teammate
-4. Wait for all teammates to complete (or timeout after 120 seconds)
-5. Collect results from all teammates
-6. Validate each platform output for required fields and character limits
-7. Merge into unified platform_content dictionary
+1. The content-generator-specialist acts as **team lead**
+2. Creates a shared task list with 4 tasks:
+   - Task 1: Generate Twitter thread
+   - Task 2: Generate LinkedIn post
+   - Task 3: Generate email newsletter section
+   - Task 4: Generate Instagram caption
+3. Spawns 4 teammates, each with:
+   - Source markdown content
+   - Tone analysis from Step 2
+   - Optional author_handle and brand_hashtags
+   - Platform-specific constraints (char limits, hashtag counts, format rules)
+4. Each teammate runs independently:
+   - **twitter-generator**: Calls `tools/generate_twitter.py` → Returns thread array with tweet objects, hashtags, suggested mentions
+   - **linkedin-generator**: Calls `tools/generate_linkedin.py` → Returns text, char_count, hashtags, hook, CTA
+   - **email-generator**: Calls `tools/generate_email.py` → Returns subject_line, section_html, section_text, word_count, CTA
+   - **instagram-generator**: Calls `tools/generate_instagram.py` → Returns caption, char_count, hashtags, line_break_count, emoji_count
+5. Team lead monitors task status (polls `TaskList` until all 4 are `completed`)
+6. Team lead collects all 4 results using `TaskGet` for each task
+7. Team lead merges results into unified `platform_content` dict with keys: twitter, linkedin, email, instagram
 
-### Teammate 1: Twitter Thread Generation
+### Sequential Fallback (Agent Teams Disabled or Failed)
 
-**Tool**: `generate_twitter.py`
+1. The content-generator-specialist calls each tool sequentially:
+   - Call `tools/generate_twitter.py` → wait for result
+   - Call `tools/generate_linkedin.py` → wait for result
+   - Call `tools/generate_email.py` → wait for result
+   - Call `tools/generate_instagram.py` → wait for result
+2. Merge results into unified `platform_content` dict
 
-**Process**:
-1. Analyze content length to determine if single tweet or thread is needed
-2. Extract key points from markdown_content (3-5 main takeaways)
-3. Generate opening hook tweet (must grab attention in first 140 chars)
-4. Generate body tweets (one key point per tweet)
-5. Generate closing CTA tweet (call-to-action)
-6. Number tweets in "X/N" format
-7. Match tone from tone_analysis (formal → professional voice, casual → conversational)
-8. Add brand_hashtags if provided (max 2 hashtags per tweet to preserve space)
-9. Suggest relevant industry hashtags (2-3 per thread, not per tweet)
-10. Suggest accounts to mention if author_handle provided
-11. Validate every tweet is <= 280 characters
+**Decision point**: **If one or more platform generators fail**:
+- **Retry once**: For any failed platform, retry the tool call once
+- **If still fails**: Include error structure for that platform: `{status: 'generation_failed', message: <error details>}`
+- **Continue**: Do NOT halt entire workflow for single platform failure. Deliver successful platforms and log failed ones.
 
-**Output**:
-```json
-{
-  "thread": [
-    {"tweet_number": 1, "text": "🧵 Here's why...", "char_count": 125},
-    {"tweet_number": 2, "text": "Key insight: ...", "char_count": 267}
-  ],
-  "total_tweets": 5,
-  "hashtags": ["#ContentMarketing", "#DigitalStrategy"],
-  "suggested_mentions": ["@IndustryLeader"]
-}
-```
+**Tools**:
+- `tools/generate_twitter.py` — Generates Twitter thread matching source tone
+- `tools/generate_linkedin.py` — Generates LinkedIn post with professional formatting
+- `tools/generate_email.py` — Generates email newsletter section with HTML and plain text
+- `tools/generate_instagram.py` — Generates Instagram caption with hashtags and emojis
 
-**Failure handling**: Retry once on LLM error. If char count exceeds 280 for any tweet, truncate and add ellipsis with warning flag.
+**Failure mode**: One or more platform generators fail due to LLM API error, timeout, or validation failure (char count exceeded after generation)
 
-### Teammate 2: LinkedIn Post Generation
+**Fallback**: Retry failed platforms once. If still failing, include error structure in output for that platform. Partial success is acceptable — 3/4 platforms is better than all-or-nothing.
 
-**Tool**: `generate_linkedin.py`
-
-**Process**:
-1. Extract main message and supporting points from content
-2. Generate attention-grabbing hook (first 1-2 sentences before "see more" fold)
-3. Write body content in LinkedIn-optimized format:
-   - Short paragraphs (2-3 sentences each)
-   - Line breaks for readability
-   - Bullet points or numbered lists where appropriate
-4. Match tone (LinkedIn skews professional even for casual content)
-5. Include industry-relevant insights and takeaways
-6. Add call-to-action (comment prompt, share request, or link to original post)
-7. Generate 3-5 hashtags (mix of popular and niche)
-8. Include brand_hashtags if provided
-9. Target length: 1200-1400 characters (optimal for LinkedIn feed visibility)
-10. Maximum: 3000 characters (hard LinkedIn limit)
-
-**Output**:
-```json
-{
-  "text": "Full LinkedIn post text with line breaks...",
-  "char_count": 1285,
-  "hashtags": ["#Marketing", "#ContentStrategy", "#B2B"],
-  "hook": "Ever wonder why most content fails?",
-  "cta": "What's your take on this approach? Share in the comments."
-}
-```
-
-**Failure handling**: Retry once on error. If exceeds 3000 chars, truncate intelligently at sentence boundary. Target 1300 chars for best visibility.
-
-### Teammate 3: Email Newsletter Section Generation
-
-**Tool**: `generate_email.py`
-
-**Process**:
-1. Summarize main points from content (3-5 key takeaways)
-2. Generate compelling subject line (40-60 chars, includes curiosity gap or benefit)
-3. Write newsletter section in scannable format:
-   - Clear subheadings
-   - Short paragraphs (3-4 sentences max)
-   - Bullet points for lists
-   - Bold key phrases
-4. Match tone but adjust for email context (slightly more direct/personal)
-5. Include clear call-to-action with link to original post
-6. Generate both HTML and plain text versions
-7. Target length: 500-800 words (3-5 minute read)
-8. Convert markdown to HTML for section_html
-9. Count words in plain text version
-
-**Output**:
-```json
-{
-  "subject_line": "The one thing everyone gets wrong about content",
-  "section_html": "<h2>Key Insights</h2><p>Content here...</p>",
-  "section_text": "KEY INSIGHTS\n\nContent here...",
-  "word_count": 672,
-  "cta": "Read the full deep-dive on the blog: https://example.com/post"
-}
-```
-
-**Failure handling**: Retry once on error. If word count exceeds 1000, summarize more aggressively. Always provide plain text fallback.
-
-### Teammate 4: Instagram Caption Generation
-
-**Tool**: `generate_instagram.py`
-
-**Process**:
-1. Extract visual storytelling elements from content
-2. Generate caption that works WITHOUT the accompanying image (must be standalone)
-3. Structure for Instagram best practices:
-   - Hook in first 1-2 lines (before "more" fold)
-   - Body with line breaks every 2-3 sentences
-   - Strategic use of emojis (3-5 per caption, not excessive)
-   - Lists or numbered points where appropriate
-4. Match tone (Instagram skews more casual and visual even for professional content)
-5. Generate call-to-action (comment prompt, tag a friend, save for later)
-6. Generate 10-15 hashtags (mix of broad, niche, and branded)
-   - First 3-5 hashtags: high-traffic, broad reach
-   - Next 5-7 hashtags: niche, targeted audience
-   - Last 2-3 hashtags: branded or campaign-specific
-7. Include brand_hashtags if provided (at end of hashtag list)
-8. Format hashtags: lowercase, alphanumeric + underscores only
-9. Target length: 1500-2000 characters (ideal for Instagram)
-10. Maximum: 2200 characters (hard Instagram limit)
-11. Count line breaks and emojis for formatting validation
-
-**Output**:
-```json
-{
-  "caption": "Ever wondered why...?\n\n💡 Here's what changed...",
-  "char_count": 1847,
-  "hashtags": [
-    "#marketing", "#contentcreator", "#digitalmarketing",
-    "#contentstrategy", "#socialmediatips", "#marketingtips",
-    "#businessgrowth", "#entrepreneurship", "#contentmarketing",
-    "#instagramtips", "#YourBrand"
-  ],
-  "line_break_count": 6,
-  "emoji_count": 4
-}
-```
-
-**Failure handling**: Retry once on error. If exceeds 2200 chars, truncate at sentence boundary. Validate hashtag format (no spaces, special chars).
-
-### Team Lead: Result Merging
-
-After all 4 teammates complete:
-
-1. Validate each platform output has required fields
-2. Check character counts are within limits
-3. If any teammate failed:
-   - Retry that specific platform once
-   - If still fails, include error structure: `{"status": "generation_failed", "error": "..."}`
-   - Do NOT halt workflow for single platform failure
-4. Merge all outputs into unified dictionary:
-   ```json
-   {
-     "twitter": {...},
-     "linkedin": {...},
-     "email": {...},
-     "instagram": {...}
-   }
-   ```
-5. Log token usage for cost tracking
-6. Return merged platform_content to main workflow
-
-**Sequential Fallback**:
-
-If Agent Teams is disabled or fails entirely:
-1. Call `generate_twitter.py` sequentially
-2. Call `generate_linkedin.py` sequentially
-3. Call `generate_email.py` sequentially
-4. Call `generate_instagram.py` sequentially
-5. Merge results (same validation as parallel mode)
-
-Wall time: 40-60s sequential vs 15s parallel, but results are identical.
+**Performance**:
+- Sequential: ~52-74 seconds (4 LLM calls in series)
+- Parallel (Agent Teams): ~25-37 seconds (4 LLM calls concurrent)
 
 ---
 
 ## Step 4: Assemble Output
 
-**Purpose**: Merge all generated content into a single JSON file and commit to repository.
+Merge all generated content into a single JSON file and commit to repo.
 
-**Delegate to**: `output-assembler-specialist` subagent
-
-**Process**:
-1. Receive inputs from all previous steps:
-   - source_metadata (from Step 1)
-   - tone_analysis (from Step 2)
-   - platform_content (from Step 3)
-2. Generate timestamp: `YYYYMMDD-HHMMSS` format in UTC
-3. Generate slug from source title: lowercase, hyphens, alphanumeric only, max 50 chars
-4. Create output filename: `output/{timestamp}-{slug}.json`
-5. Merge all data into unified structure:
+1. Receive from previous steps:
+   - `source_metadata` (from Step 1): url, title, author, publish_date
+   - `tone_analysis` (from Step 2): all tone dimensions + confidence
+   - `platform_content` (from Step 3): twitter, linkedin, email, instagram objects
+2. Delegate to `output-assembler-specialist` subagent
+3. The subagent calls `tools/assemble_output.py` with all inputs
+4. The tool merges everything into unified JSON structure:
    ```json
    {
      "source_url": "...",
      "source_title": "...",
-     "source_author": "...",
      "generated_at": "2026-02-11T13:32:00Z",
      "tone_analysis": {...},
      "twitter": {...},
@@ -336,176 +152,54 @@ Wall time: 40-60s sequential vs 15s parallel, but results are identical.
      "instagram": {...}
    }
    ```
-6. Validate JSON structure (all required keys present)
+5. Generate output filename: `output/{timestamp}-{slug}.json`
+6. Slugify the source title to create a clean filename
 7. Create `output/` directory if it doesn't exist
-8. Write JSON file with pretty formatting (indent=2, ensure_ascii=False for emoji support)
-9. Calculate summary stats:
-   - Total characters across all platforms
-   - Number of successfully generated platforms
-   - Token usage (if available)
-10. Return output path and stats for GitHub Actions summary
+8. Write JSON file with pretty formatting (indent=2)
+9. Validate JSON serialization before writing
+10. Return output file path and summary stats (total_chars, platform_count)
 
-**Success output**:
-```json
-{
-  "output_path": "output/20260211-133200-awesome-blog-post.json",
-  "total_chars": 8472,
-  "platform_count": 4,
-  "status": "success"
-}
-```
+**Decision point**: **If JSON serialization fails or file write fails**:
+- **Yes (failed)**: Log full error details. Print the JSON output to stdout. Halt workflow with exit code 1. User can manually save from logs.
+- **No (succeeded)**: Continue to Step 5 (commit)
 
-**Failure Modes**:
-- JSON serialization fails (invalid data structure)
-- File write fails (permissions, disk full, directory doesn't exist)
-- Validation fails (missing required fields)
+**Tool**: `tools/assemble_output.py` — Merges all content into final JSON file
 
-**Fallback**:
-- On write failure: Print full JSON to stdout with clear markers
-- Log detailed error to GitHub Actions
-- User can manually save JSON from workflow logs
-- Mark workflow as failed but preserve all generated content
+**Failure mode**: JSON serialization fails (malformed data), file write fails (permissions, disk full), or output directory cannot be created
+
+**Fallback**: Print the complete output JSON to stdout so it's captured in logs. Log the error. Exit with non-zero code to signal failure. The user can manually save the output from the GitHub Actions logs.
 
 ---
 
-## Execution Paths
+## Step 5: Commit Results
 
-### Path 1: GitHub Actions (Primary)
+Commit the output file to the repository.
 
-Triggered via `workflow_dispatch` with inputs:
-1. User provides blog_url, optional author_handle and brand_hashtags via Actions UI
-2. GitHub Actions spins up Python environment
-3. Installs dependencies from requirements.txt
-4. Sets environment variables from GitHub Secrets (FIRECRAWL_API_KEY, ANTHROPIC_API_KEY)
-5. Executes workflow with Claude Code CLI
-6. Commits output JSON to `output/` directory
-7. Creates GitHub Actions summary with stats and link to output file
-8. Sends failure notification if any step errors
+1. Verify that output file was written successfully in Step 4
+2. Stage ONLY the output file: `git add output/{timestamp}-{slug}.json`
+3. Run `git status` to verify only the output file is staged
+4. Commit with descriptive message: `"add: content repurposer output for {source_title} ({timestamp})"`
+5. Pull with rebase before pushing: `git pull --rebase`
+6. Push to the repository: `git push`
 
-### Path 2: Local CLI
+**Decision point**: **If git operations fail**:
+- **Commit fails**: Log error. Check if there are no changes (file already committed). Exit gracefully.
+- **Push fails (network, auth)**: Log error. Output file is committed locally but not pushed. Retry push on next workflow run.
 
-For development and testing:
-```bash
-# Set up environment
-cp .env.example .env
-# Edit .env with your API keys
+**Failure mode**: Git commit fails (no changes, permissions), push fails (network, authentication, conflicts)
 
-# Install dependencies
-pip install -r requirements.txt
-
-# Run workflow
-claude workflow.md --var blog_url="https://example.com/blog/post"
-```
-
-Output is written to `output/` directory in local repo.
-
-### Path 3: Agent HQ (Issue-Driven)
-
-1. Open a GitHub Issue with label `content-repurpose`
-2. Issue body format:
-   ```
-   Blog URL: https://example.com/blog/post
-   Author Handle: johndoe (optional)
-   Brand Hashtags: YourBrand, Marketing (optional)
-   ```
-3. Agent HQ parses issue body
-4. Executes workflow via GitHub Actions
-5. Opens draft PR with generated output
-6. Comments on issue with PR link and summary
+**Fallback**: If commit succeeds but push fails, the file is still committed locally. Next workflow run will push it. Log the push failure for visibility.
 
 ---
 
-## Failure Recovery
+## Notes
 
-### Total Failure (No Output Generated)
-
-If scraping fails and no content is extracted:
-- Halt workflow immediately after Step 1
-- Log clear error message: "Failed to fetch content from {url}: {error}"
-- GitHub Actions marks workflow as failed
-- User receives notification with error details
-- No partial output is generated
-
-### Partial Failure (Some Platforms Missing)
-
-If 1-3 platforms fail but others succeed:
-- Continue workflow with available platform content
-- Failed platforms show error structure in final JSON:
-  ```json
-  {
-    "twitter": {"status": "generation_failed", "error": "LLM timeout"},
-    "linkedin": {...successful output...},
-    ...
-  }
-  ```
-- Workflow completes but GitHub Actions shows warning status
-- User can retry individual platforms manually if needed
-
-### Tone Analysis Failure
-
-If tone analysis fails:
-- Use default tone profile (neutral across all dimensions)
-- Log warning: "Using default tone profile due to analysis failure"
-- Continue with generation (quality may be slightly reduced)
-- Mark final output with `"tone_analysis_fallback": true` flag
-
----
-
-## Performance & Cost
-
-### Execution Time
-
-**With Agent Teams (Parallel)**:
-- Step 1 (Scrape): 3-5 seconds
-- Step 2 (Tone): 8-12 seconds
-- Step 3 (Generate - Parallel): 12-18 seconds
-- Step 4 (Assemble): 1-2 seconds
-- **Total**: ~25-37 seconds
-
-**Without Agent Teams (Sequential)**:
-- Step 1: 3-5 seconds
-- Step 2: 8-12 seconds
-- Step 3 (Generate - Sequential): 40-55 seconds
-- Step 4: 1-2 seconds
-- **Total**: ~52-74 seconds
-
-**Speedup**: ~2x faster with Agent Teams for generation step.
-
-### API Cost Estimates
-
-Per run (single blog post):
-- Firecrawl API: $0.01-0.02 per scrape
-- Claude API:
-  - Tone analysis: ~500 input tokens + 200 output tokens = $0.01
-  - Twitter generation: ~1000 input + 500 output = $0.02
-  - LinkedIn generation: ~1000 input + 300 output = $0.02
-  - Email generation: ~1000 input + 600 output = $0.02
-  - Instagram generation: ~1000 input + 400 output = $0.02
-  - Total Claude: ~$0.09 per run
-
-**Total per run**: ~$0.10-0.11
-
-Assumes Claude Sonnet 4 pricing: $3/MTok input, $15/MTok output
-
-### GitHub Actions Minutes
-
-Per run: ~1 minute (including setup + execution + commit)
-
-Monthly cost if running 100x/month:
-- 100 runs × $0.11/run = $11 API costs
-- 100 minutes GitHub Actions (well within free tier: 2000 min/month private, unlimited public)
-
----
-
-## Success Metrics
-
-Track these metrics in GitHub Actions summaries:
-
-1. **Success Rate**: % of runs that complete without errors
-2. **Platform Coverage**: % of runs that generate all 4 platforms successfully
-3. **Average Execution Time**: Track trend over time
-4. **Character Count Distribution**: Track Twitter thread length, LinkedIn post length
-5. **Tone Analysis Confidence**: Average confidence score across runs
-6. **API Error Rate**: % of runs that hit API failures (rate limits, timeouts)
-
-Log these to a tracking file: `metrics/run_log.jsonl` (one line per run).
+- **Character count validation is critical**: Every platform generator must validate character counts BEFORE returning. Use `len()` on final strings. Account for URL shortening (Twitter: 23 chars).
+- **Tone matching is the key differentiator**: The same blog post should sound formal on LinkedIn if the source was formal, casual on Instagram if the source was casual. Tone analysis drives generation quality.
+- **Agent Teams is optional but recommended**: 4 independent platform generators = ideal parallelization candidate. 2x speedup with identical results and same token cost.
+- **Partial success is acceptable**: If LinkedIn generation fails but Twitter/email/Instagram succeed, deliver the 3 successful platforms. Do not fail the entire run for one platform.
+- **Firecrawl + HTTP fallback pattern**: Primary API with HTTP backup maximizes reliability. Most blog posts are scrapable with one of the two methods.
+- **Secrets required**: `FIRECRAWL_API_KEY` (for scraping), `ANTHROPIC_API_KEY` (for LLM calls)
+- **MCP alternatives**: Firecrawl MCP (preferred) or Fetch MCP + Puppeteer MCP (fallback). If no MCPs available, direct HTTP with Python `requests` + `beautifulsoup4`.
+- **Cost per run**: ~$0.10-0.11 (Firecrawl: $0.01-0.02, Claude: ~$0.09 for tone + 4 platforms)
+- **Execution time**: Sequential: ~52-74s, Parallel (Agent Teams): ~25-37s

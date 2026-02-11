@@ -1,115 +1,119 @@
-name: Content Repurposer
+name: "Content Repurposer — WAT System"
 
 on:
   workflow_dispatch:
     inputs:
       blog_url:
-        description: 'Blog post URL to repurpose'
+        description: "Blog post URL to repurpose"
         required: true
         type: string
       author_handle:
-        description: 'Author social media handle (optional)'
+        description: "Author social media handle (optional, without @)"
         required: false
         type: string
-        default: ''
       brand_hashtags:
-        description: 'Comma-separated brand hashtags (optional)'
+        description: "Comma-separated brand hashtags (optional, without #)"
         required: false
         type: string
-        default: ''
+  repository_dispatch:
+    types: [content-repurposer-run]
+
+permissions:
+  contents: write
+  issues: write
 
 jobs:
-  repurpose:
+  run:
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    
-    permissions:
-      contents: write
-      pull-requests: write
-    
+
     steps:
-      - name: Checkout repository
+      - name: Checkout repo
         uses: actions/checkout@v4
-      
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
-          cache: 'pip'
-      
+          python-version: "3.11"
+
       - name: Install dependencies
         run: |
+          pip install --upgrade pip
           pip install -r requirements.txt
-      
-      - name: Set up Claude Code CLI
+
+      - name: Validate required secrets
         run: |
-          npm install -g @anthropic-ai/claude-code
-      
-      - name: Run Content Repurposer
+          if [ -z "${{ secrets.ANTHROPIC_API_KEY }}" ]; then
+            echo "::error::ANTHROPIC_API_KEY secret is not set"
+            exit 1
+          fi
+          
+          # FIRECRAWL_API_KEY is optional (HTTP fallback available)
+          if [ -z "${{ secrets.FIRECRAWL_API_KEY }}" ]; then
+            echo "::warning::FIRECRAWL_API_KEY not set, will use HTTP fallback for scraping"
+          fi
+          
+          echo "Secret validation passed"
+
+      - name: Determine input
+        id: input
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "blog_url=${{ github.event.inputs.blog_url }}" >> $GITHUB_OUTPUT
+            echo "author_handle=${{ github.event.inputs.author_handle }}" >> $GITHUB_OUTPUT
+            echo "brand_hashtags=${{ github.event.inputs.brand_hashtags }}" >> $GITHUB_OUTPUT
+          elif [ "${{ github.event_name }}" = "repository_dispatch" ]; then
+            echo "blog_url=${{ github.event.client_payload.blog_url }}" >> $GITHUB_OUTPUT
+            echo "author_handle=${{ github.event.client_payload.author_handle }}" >> $GITHUB_OUTPUT
+            echo "brand_hashtags=${{ github.event.client_payload.brand_hashtags }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Execute system via Claude Code
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           FIRECRAWL_API_KEY: ${{ secrets.FIRECRAWL_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1"
+          BLOG_URL: ${{ steps.input.outputs.blog_url }}
+          AUTHOR_HANDLE: ${{ steps.input.outputs.author_handle }}
+          BRAND_HASHTAGS: ${{ steps.input.outputs.brand_hashtags }}
         run: |
-          claude workflow.md \
-            --var blog_url="${{ inputs.blog_url }}" \
-            --var author_handle="${{ inputs.author_handle }}" \
-            --var brand_hashtags="${{ inputs.brand_hashtags }}"
-      
-      - name: Check output
-        id: output_check
-        run: |
-          if [ -d "output" ] && [ "$(ls -A output/*.json 2>/dev/null)" ]; then
-            latest_output=$(ls -t output/*.json | head -n1)
-            echo "output_file=$latest_output" >> $GITHUB_OUTPUT
-            echo "✅ Output generated: $latest_output"
-            
-            # Extract summary stats
-            total_chars=$(jq -r '.twitter.thread[].char_count | tonumber' "$latest_output" | awk '{sum+=$1} END {print sum}')
-            twitter_tweets=$(jq -r '.twitter.total_tweets // 0' "$latest_output")
-            linkedin_chars=$(jq -r '.linkedin.char_count // 0' "$latest_output")
-            email_words=$(jq -r '.email.word_count // 0' "$latest_output")
-            instagram_chars=$(jq -r '.instagram.char_count // 0' "$latest_output")
-            
-            echo "summary<<EOF" >> $GITHUB_OUTPUT
-            echo "### Content Repurposer Results" >> $GITHUB_OUTPUT
-            echo "" >> $GITHUB_OUTPUT
-            echo "**Source**: ${{ inputs.blog_url }}" >> $GITHUB_OUTPUT
-            echo "" >> $GITHUB_OUTPUT
-            echo "**Generated Content:**" >> $GITHUB_OUTPUT
-            echo "- 🐦 Twitter: ${twitter_tweets} tweets" >> $GITHUB_OUTPUT
-            echo "- 💼 LinkedIn: ${linkedin_chars} characters" >> $GITHUB_OUTPUT
-            echo "- 📧 Email: ${email_words} words" >> $GITHUB_OUTPUT
-            echo "- 📸 Instagram: ${instagram_chars} characters" >> $GITHUB_OUTPUT
-            echo "" >> $GITHUB_OUTPUT
-            echo "**Output file**: \`$latest_output\`" >> $GITHUB_OUTPUT
-            echo "EOF" >> $GITHUB_OUTPUT
-          else
-            echo "❌ No output file generated"
-            exit 1
-          fi
-      
+          INPUT_JSON=$(jq -n \
+            --arg url "$BLOG_URL" \
+            --arg handle "$AUTHOR_HANDLE" \
+            --arg hashtags "$BRAND_HASHTAGS" \
+            '{blog_url: $url, author_handle: $handle, brand_hashtags: $hashtags}')
+          
+          npx @anthropic-ai/claude-code --print \
+            "Read CLAUDE.md for context, then execute workflow.md with input: $INPUT_JSON"
+
       - name: Commit results
         run: |
-          git config --local user.email "github-actions[bot]@users.noreply.github.com"
-          git config --local user.name "github-actions[bot]"
-          git add output/
-          git commit -m "content: Repurposed ${{ inputs.blog_url }}"
-          git push
-      
-      - name: Create summary
-        if: always()
-        run: |
-          if [ -f "${{ steps.output_check.outputs.output_file }}" ]; then
-            echo "${{ steps.output_check.outputs.summary }}" >> $GITHUB_STEP_SUMMARY
+          git config user.name "WAT System: content-repurposer"
+          git config user.email "wat-system@users.noreply.github.com"
+          
+          # Stage ONLY output files
+          git add output/*.json || true
+          
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
           else
-            echo "### Content Repurposer Failed" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "**Source**: ${{ inputs.blog_url }}" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "❌ Failed to generate content. Check logs for details." >> $GITHUB_STEP_SUMMARY
+            git commit -m "add: content repurposer output ($(date +%Y-%m-%d_%H%M))"
+            git push
           fi
-      
+
       - name: Notify on failure
         if: failure()
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          echo "::error::Content repurposing failed for ${{ inputs.blog_url }}"
+          gh issue create \
+            --title "System Run Failed: content-repurposer ($(date +%Y-%m-%d))" \
+            --body "System \`content-repurposer\` failed during execution.
+
+          **Run**: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          **Trigger**: ${{ github.event_name }}
+          **Input URL**: ${{ steps.input.outputs.blog_url }}
+
+          Check the logs for details." \
+            --label "bug,system-failure"

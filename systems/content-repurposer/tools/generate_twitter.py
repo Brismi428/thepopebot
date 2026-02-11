@@ -1,14 +1,23 @@
-#!/usr/bin/env python3
 """
-generate_twitter.py
+Generate Twitter — Generate Twitter thread from content matching source tone
 
-Generates an optimized Twitter thread from blog content and tone analysis.
+Creates a threaded tweet sequence with proper character limits (280/tweet),
+numbering, hashtags, and mention suggestions. Matches source content tone.
+
+Inputs:
+    - markdown_content (str): Source content
+    - tone_analysis (dict): Tone profile from analyze_tone.py
+    - author_handle (str, optional): Author handle for mentions
+    - brand_hashtags (list[str], optional): Brand hashtags to include
+
+Outputs:
+    - JSON: {thread: [{tweet_number, text, char_count}, ...], total_tweets, hashtags, suggested_mentions}
 
 Usage:
-    python generate_twitter.py --content-file content.json --tone-file tone.json
+    python generate_twitter.py --content "..." --tone '{"formality": "casual", ...}'
 
-Output:
-    JSON with thread array, total_tweets, hashtags, suggested_mentions
+Environment Variables:
+    - ANTHROPIC_API_KEY: Claude API key (required)
 """
 
 import argparse
@@ -16,163 +25,178 @@ import json
 import logging
 import os
 import sys
-from typing import Dict, Any, List
+from typing import Any
 
-try:
-    from anthropic import Anthropic
-    ANTHROPIC_AVAILABLE = True
-except ImportError:
-    ANTHROPIC_AVAILABLE = False
-
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+)
 logger = logging.getLogger(__name__)
 
 
 def generate_twitter_thread(
-    content: str,
-    tone_analysis: Dict[str, Any],
-    author_handle: str = "",
-    brand_hashtags: List[str] = None
-) -> Dict[str, Any]:
-    """Generate Twitter thread matching source tone."""
-    
-    if not ANTHROPIC_AVAILABLE:
-        raise ImportError("anthropic package required")
-    
+    content: str, tone: dict[str, Any], author_handle: str = "", brand_hashtags: list[str] | None = None
+) -> dict[str, Any]:
+    """
+    Generate Twitter thread using Claude API.
+
+    Args:
+        content: Source markdown content
+        tone: Tone analysis dict
+        author_handle: Optional author handle
+        brand_hashtags: Optional list of brand hashtags
+
+    Returns:
+        dict with thread, total_tweets, hashtags, suggested_mentions
+
+    Raises:
+        Exception: If Claude API call fails or validation fails
+    """
+    try:
+        from anthropic import Anthropic
+    except ImportError:
+        raise ImportError("anthropic package not installed. Install with: pip install anthropic")
+
     api_key = os.environ.get("ANTHROPIC_API_KEY")
     if not api_key:
-        raise ValueError("ANTHROPIC_API_KEY not set")
-    
+        raise ValueError("ANTHROPIC_API_KEY environment variable not set")
+
     client = Anthropic(api_key=api_key)
-    brand_tags = brand_hashtags or []
-    
-    system_prompt = f"""You are a social media expert specializing in Twitter content.
 
-Generate a Twitter thread from the provided blog content.
+    # Build system prompt with tone matching instructions
+    system_prompt = f"""You are a Twitter content strategist. Generate a Twitter thread from the provided content.
 
-TONE REQUIREMENTS:
-- Formality: {tone_analysis.get('formality', 'neutral')}
-- Technical level: {tone_analysis.get('technical_level', 'general')}
-- Humor: {tone_analysis.get('humor_level', 'low')}
-- Emotion: {tone_analysis.get('primary_emotion', 'informative')}
+**Source Tone Profile**:
+- Formality: {tone.get('formality', 'neutral')}
+- Technical Level: {tone.get('technical_level', 'general')}
+- Humor Level: {tone.get('humor_level', 'low')}
+- Primary Emotion: {tone.get('primary_emotion', 'informative')}
 
-MATCH THE SOURCE TONE PRECISELY. If the source is formal, be formal. If casual, be casual.
+**CRITICAL: Match this tone exactly** in your Twitter thread. If the source is formal, be formal. If casual, be casual.
 
-TWITTER CONSTRAINTS:
-- Each tweet max 280 characters (STRICT limit)
-- Number tweets: 1/N, 2/N, etc.
-- First tweet: strong hook, grab attention in first 140 chars
-- Middle tweets: one key insight per tweet
-- Final tweet: clear CTA (call-to-action)
-- Include 2-3 relevant hashtags for the ENTIRE thread (not per tweet)
-- Use line breaks for readability where appropriate
+**Twitter Thread Constraints**:
+- Maximum 280 characters per tweet (STRICT LIMIT)
+- Number tweets in X/N format (e.g., "1/5", "2/5")
+- First tweet MUST have a hook that grabs attention
+- Last tweet MUST have a clear call-to-action (CTA)
+- Use line breaks for readability
+- Include 2-3 relevant hashtags total (distributed across thread, not all in one tweet)
+- Suggest @mentions for industry leaders or relevant accounts (without the @ in JSON)
 
-Return ONLY valid JSON:
+**Brand Hashtags to Include**: {', '.join(brand_hashtags) if brand_hashtags else 'None'}
+{"**Author Handle**: " + author_handle if author_handle else ""}
+
+Return ONLY valid JSON in this exact structure (no markdown fences):
 {{
   "thread": [
-    {{"tweet_number": 1, "text": "...", "char_count": 125}},
-    {{"tweet_number": 2, "text": "...", "char_count": 267}}
+    {{"tweet_number": 1, "text": "First tweet with hook...", "char_count": 125}},
+    {{"tweet_number": 2, "text": "Second tweet...", "char_count": 267}}
   ],
   "total_tweets": 5,
-  "hashtags": ["#Hashtag1", "#Hashtag2"],
-  "suggested_mentions": ["@handle1", "@handle2"]
+  "hashtags": ["#ContentMarketing", "#SEO"],
+  "suggested_mentions": ["Industry_Leader", "Relevant_Account"]
 }}"""
-    
-    user_prompt = f"Blog content to convert into Twitter thread:\n\n{content[:6000]}"
-    if author_handle:
-        user_prompt += f"\n\nAuthor handle to potentially mention: @{author_handle}"
-    if brand_tags:
-        user_prompt += f"\n\nBrand hashtags to include: {', '.join(brand_tags)}"
-    
-    logger.info("Generating Twitter thread...")
-    
+
+    logger.info("Generating Twitter thread (content length: %d chars)", len(content))
+
+    # Truncate content if too long
+    if len(content) > 50000:
+        logger.warning("Content exceeds 50k chars, truncating for generation")
+        content = content[:50000] + "\n\n[Content truncated]"
+
+    message = client.messages.create(
+        model="claude-sonnet-4-20250514",
+        max_tokens=4096,
+        temperature=0.3,
+        system=system_prompt,
+        messages=[{"role": "user", "content": content}],
+    )
+
+    response_text = message.content[0].text.strip()
+
+    # Strip markdown fences if present
+    if response_text.startswith("```"):
+        lines = response_text.split("\n")
+        response_text = "\n".join(lines[1:-1]) if len(lines) > 2 else response_text
+
+    # Parse JSON response
     try:
-        message = client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=4096,
-            temperature=0.7,
-            system=system_prompt,
-            messages=[{"role": "user", "content": user_prompt}]
-        )
-        
-        response_text = message.content[0].text.strip()
-        
-        # Strip markdown fences
-        if response_text.startswith("```"):
-            lines = response_text.split("\n")
-            response_text = "\n".join(lines[1:-1]).strip()
-        
         result = json.loads(response_text)
-        
-        # Validate thread
-        if "thread" not in result or not isinstance(result["thread"], list):
-            raise ValueError("Invalid response: missing or invalid 'thread' field")
-        
-        # Validate and fix character counts
-        for tweet in result["thread"]:
-            text = tweet.get("text", "")
-            actual_count = len(text)
-            tweet["char_count"] = actual_count
-            
-            if actual_count > 280:
-                logger.warning(f"Tweet {tweet['tweet_number']} exceeds 280 chars ({actual_count}). Truncating.")
-                tweet["text"] = text[:277] + "..."
-                tweet["char_count"] = 280
-        
-        logger.info(f"Generated {len(result['thread'])} tweet thread")
-        return result
-    
-    except Exception as e:
-        logger.error(f"Generation failed: {str(e)}")
-        raise
+    except json.JSONDecodeError as e:
+        logger.error("Failed to parse Claude response as JSON: %s", e)
+        logger.debug("Raw response: %s", response_text)
+        raise ValueError(f"Claude returned invalid JSON: {e}") from e
+
+    # Validate character counts
+    for tweet in result.get("thread", []):
+        tweet_text = tweet.get("text", "")
+        actual_length = len(tweet_text)
+        tweet["char_count"] = actual_length  # Ensure accurate count
+
+        if actual_length > 280:
+            logger.error("Tweet %d exceeds 280 chars: %d", tweet.get("tweet_number", 0), actual_length)
+            # Truncate with ellipsis
+            tweet["text"] = tweet_text[:277] + "..."
+            tweet["char_count"] = 280
+            logger.warning("Tweet %d truncated to 280 chars", tweet.get("tweet_number", 0))
+
+    logger.info("Twitter thread generated (%d tweets)", len(result.get("thread", [])))
+
+    return result
 
 
-def main(
-    content: str,
-    tone_analysis: Dict[str, Any],
-    author_handle: str = "",
-    brand_hashtags: List[str] = None
-) -> Dict[str, Any]:
-    """Main generation function with error handling."""
-    
+def main() -> dict[str, Any]:
+    """
+    Main entry point for the Twitter generator tool.
+
+    Returns:
+        dict: Twitter thread result.
+    """
+    parser = argparse.ArgumentParser(description="Generate Twitter thread from content")
+    parser.add_argument("--content", help="Markdown content (alternative to stdin)")
+    parser.add_argument("--tone", help="Tone analysis JSON string")
+    parser.add_argument("--author-handle", default="", help="Author social media handle")
+    parser.add_argument("--brand-hashtags", help="Comma-separated brand hashtags")
+    args = parser.parse_args()
+
+    # Get inputs
+    if args.content and args.tone:
+        content = args.content
+        tone = json.loads(args.tone)
+    else:
+        # Read from stdin (JSON with markdown_content and tone_analysis fields)
+        try:
+            stdin_data = json.load(sys.stdin)
+            content = stdin_data.get("markdown_content", "")
+            tone = stdin_data.get("tone_analysis", {})
+        except json.JSONDecodeError as e:
+            logger.error("Failed to parse stdin as JSON: %s", e)
+            sys.exit(1)
+
+    brand_hashtags = []
+    if args.brand_hashtags:
+        brand_hashtags = [tag.strip() for tag in args.brand_hashtags.split(",")]
+
+    logger.info("Starting Twitter generation")
+
     try:
-        return generate_twitter_thread(content, tone_analysis, author_handle, brand_hashtags)
+        result = generate_twitter_thread(content, tone, args.author_handle, brand_hashtags)
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+        return result
     except Exception as e:
-        logger.error(f"Twitter generation failed: {str(e)}")
-        return {
+        logger.error("Twitter generation failed: %s", str(e))
+        error_result = {
             "status": "generation_failed",
-            "error": str(e),
+            "message": str(e),
             "thread": [],
             "total_tweets": 0,
             "hashtags": [],
-            "suggested_mentions": []
+            "suggested_mentions": [],
         }
+        print(json.dumps(error_result, indent=2, ensure_ascii=False))
+        sys.exit(1)
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Generate Twitter thread")
-    parser.add_argument("--content-file", required=True, help="JSON file with markdown_content")
-    parser.add_argument("--tone-file", required=True, help="JSON file with tone analysis")
-    parser.add_argument("--author-handle", default="", help="Author social handle")
-    parser.add_argument("--brand-hashtags", default="", help="Comma-separated brand hashtags")
-    
-    args = parser.parse_args()
-    
-    try:
-        with open(args.content_file) as f:
-            content_data = json.load(f)
-        with open(args.tone_file) as f:
-            tone_data = json.load(f)
-        
-        content = content_data.get("markdown_content", "")
-        brand_tags = [t.strip() for t in args.brand_hashtags.split(",") if t.strip()] if args.brand_hashtags else []
-        
-        result = main(content, tone_data, args.author_handle, brand_tags)
-        print(json.dumps(result, indent=2, ensure_ascii=False))
-        
-        sys.exit(0 if result.get("status") != "generation_failed" else 1)
-    
-    except Exception as e:
-        logger.exception("Fatal error")
-        print(json.dumps({"status": "generation_failed", "error": str(e)}, indent=2))
-        sys.exit(1)
+    main()
