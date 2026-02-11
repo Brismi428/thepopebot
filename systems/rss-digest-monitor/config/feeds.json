@@ -1,0 +1,19 @@
+{
+  "feeds": [
+    {
+      "name": "Hacker News",
+      "url": "https://news.ycombinator.com/rss",
+      "tags": ["tech", "news"]
+    },
+    {
+      "name": "GitHub Blog",
+      "url": "https://github.blog/feed/",
+      "tags": ["dev", "github"]
+    },
+    {
+      "name": "Python Insider",
+      "url": "https://blog.python.org/feeds/posts/default",
+      "tags": ["python", "dev"]
+    }
+  ]
+}

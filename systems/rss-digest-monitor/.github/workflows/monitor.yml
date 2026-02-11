@@ -1,0 +1,185 @@
+name: RSS Digest Monitor
+
+on:
+  schedule:
+    # Daily at 8:00 AM UTC
+    - cron: '0 8 * * *'
+  
+  workflow_dispatch:
+    inputs:
+      force_send:
+        description: 'Send digest even if no new posts (for testing)'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+
+permissions:
+  contents: write  # Required to commit state updates
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          pip install --quiet --upgrade pip
+          pip install --quiet -r requirements.txt
+      
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+      
+      - name: Create temp directory
+        run: mkdir -p tmp logs
+      
+      - name: Run RSS Digest Monitor
+        env:
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          SMTP_FROM: ${{ secrets.SMTP_FROM }}
+          SMTP_TO: ${{ secrets.SMTP_TO }}
+          FORCE_SEND: ${{ github.event.inputs.force_send }}
+        run: |
+          set -e
+          
+          echo "=== RSS Digest Monitor ==="
+          echo "Run started at: $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+          CURRENT_TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          CURRENT_DATE=$(date -u +"%B %d, %Y")
+          RUN_LOG="logs/$(date -u +"%Y-%m-%d")_run.json"
+          
+          # Step 1: Load State
+          echo ""
+          echo "Step 1: Loading state..."
+          python tools/load_state.py state/rss_state.json > tmp/state.json
+          
+          # Step 2: Fetch RSS Feeds
+          echo ""
+          echo "Step 2: Fetching RSS feeds..."
+          python tools/fetch_rss_feeds.py config/feeds.json > tmp/feed_results.json
+          
+          # Step 3: Filter New Posts
+          echo ""
+          echo "Step 3: Filtering new posts..."
+          python tools/filter_new_posts.py tmp/feed_results.json tmp/state.json > tmp/filtered.json
+          
+          # Extract new_posts and new_guids for next steps
+          NEW_POSTS_COUNT=$(python -c "import json; data=json.load(open('tmp/filtered.json')); print(len(data['new_posts']))")
+          echo "Found $NEW_POSTS_COUNT new posts"
+          
+          # Separate new_posts and new_guids into individual files
+          python -c "import json; data=json.load(open('tmp/filtered.json')); json.dump({'new_posts': data['new_posts']}, open('tmp/new_posts.json', 'w'), indent=2)"
+          python -c "import json; data=json.load(open('tmp/filtered.json')); json.dump({'new_guids': data['new_guids']}, open('tmp/new_guids.json', 'w'), indent=2)"
+          
+          # Step 4-5: Generate and Send Email (conditional)
+          EMAIL_SENT="false"
+          
+          if [ "$NEW_POSTS_COUNT" -gt 0 ] || [ "$FORCE_SEND" = "true" ]; then
+            echo ""
+            echo "Step 4: Generating HTML digest..."
+            python tools/generate_html_digest.py tmp/new_posts.json "$CURRENT_DATE" > tmp/digest.eml
+            
+            # Check if digest was generated (not null)
+            if [ -s tmp/digest.eml ]; then
+              echo ""
+              echo "Step 5: Sending email via SMTP..."
+              if python tools/send_email_smtp.py tmp/digest.eml; then
+                EMAIL_SENT="true"
+                echo "✓ Email sent successfully"
+              else
+                echo "✗ Email send failed - state will NOT be updated"
+                exit 1
+              fi
+            else
+              echo "No digest generated (empty post list)"
+            fi
+          else
+            echo ""
+            echo "No new posts - skipping email generation and send"
+          fi
+          
+          # Step 6: Update State (only if email sent or no new posts)
+          if [ "$EMAIL_SENT" = "true" ] || [ "$NEW_POSTS_COUNT" -eq 0 ]; then
+            echo ""
+            echo "Step 6: Updating state..."
+            python tools/save_state.py state/rss_state.json tmp/new_guids.json "$CURRENT_TIMESTAMP"
+            echo "✓ State updated"
+          fi
+          
+          # Generate run summary
+          echo ""
+          echo "Generating run summary..."
+          python -c "
+import json
+from pathlib import Path
+
+feed_results = json.load(open('tmp/feed_results.json'))
+filtered = json.load(open('tmp/filtered.json'))
+
+feeds_checked = len(feed_results['feeds'])
+feeds_failed = sum(1 for f in feed_results['feeds'] if f.get('error'))
+new_posts = len(filtered['new_posts'])
+email_sent = '$EMAIL_SENT' == 'true'
+failed_feeds = [f['url'] for f in feed_results['feeds'] if f.get('error')]
+
+summary = {
+    'timestamp': '$CURRENT_TIMESTAMP',
+    'feeds_checked': feeds_checked,
+    'feeds_failed': feeds_failed,
+    'new_posts': new_posts,
+    'email_sent': email_sent,
+    'failed_feeds': failed_feeds
+}
+
+Path('$RUN_LOG').write_text(json.dumps(summary, indent=2))
+print(f'✓ Run summary saved to $RUN_LOG')
+"
+          
+          echo ""
+          echo "=== Run Complete ==="
+          echo "Timestamp: $CURRENT_TIMESTAMP"
+          echo "New posts: $NEW_POSTS_COUNT"
+          echo "Email sent: $EMAIL_SENT"
+      
+      - name: Commit state updates
+        run: |
+          # Stage only state and logs
+          git add state/rss_state.json logs/*.json
+          
+          # Check if there are changes to commit
+          if git diff --staged --quiet; then
+            echo "No state changes to commit"
+          else
+            COMMIT_DATE=$(date -u +"%Y-%m-%d")
+            NEW_POSTS_COUNT=$(python -c "import json; print(json.load(open('logs/${COMMIT_DATE}_run.json'))['new_posts'])")
+            
+            git commit -m "chore: RSS monitor state update - $COMMIT_DATE ($NEW_POSTS_COUNT new posts)"
+            git push
+            echo "✓ State committed and pushed"
+          fi
+      
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "::error::RSS Digest Monitor workflow failed"
+          echo "Check the logs above for details"
+          echo "State was NOT updated - posts will retry on next run"
