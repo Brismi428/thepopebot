@@ -71,7 +71,7 @@ INVOICE_SCHEMA = {
                 "required": ["description", "quantity", "rate"],
                 "properties": {
                     "description": {"type": "string", "minLength": 1},
-                    "quantity": {"type": "number", "minimum": 0, "exclusiveMinimum": True},
+                    "quantity": {"type": "number", "exclusiveMinimum": 0},
                     "rate": {"type": "number", "minimum": 0}
                 }
             }
