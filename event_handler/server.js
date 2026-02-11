@@ -243,6 +243,60 @@ async function summarizeJob(results) {
   }
 }
 
+/**
+ * Detect if a completed job was a PRP generation and auto-chain to build if confidence >= 8.
+ * Looks for PRPs/*.md in changed files and CONFIDENCE_SCORE: X/10 in the commit message or log.
+ */
+async function checkPrpAutoChain(results) {
+  const changedFiles = results.changed_files || [];
+
+  // Find a PRP file (exclude templates/)
+  const prpFile = changedFiles.find(f =>
+    f.startsWith('PRPs/') && f.endsWith('.md') && !f.includes('templates/')
+  );
+  if (!prpFile) return null;
+
+  const systemName = path.basename(prpFile, '.md');
+
+  // Search commit message, log, and job text for the confidence score
+  const searchText = [results.commit_message, results.log, results.job].filter(Boolean).join('\n');
+  const match = searchText.match(/CONFIDENCE_SCORE:\s*(\d+)\s*\/\s*10/i);
+
+  if (!match) {
+    console.log(`[AUTO-CHAIN] PRP generated for ${systemName} but no confidence score found`);
+    return null;
+  }
+
+  const confidence = parseInt(match[1], 10);
+  console.log(`[AUTO-CHAIN] PRP ${systemName}: confidence ${confidence}/10`);
+
+  if (confidence < 8) {
+    console.log(`[AUTO-CHAIN] Skipping auto-build: confidence ${confidence}/10 < 8`);
+    return null;
+  }
+
+  // Build the execute-PRP job description (mirrors CHATBOT.md Step 5)
+  const buildJobDesc = [
+    'Read the WAT factory instructions in CLAUDE.md and factory/workflow.md.',
+    '',
+    `Execute the PRP at PRPs/${systemName}.md to build the complete WAT system.`,
+    '',
+    'Follow factory/workflow.md steps:',
+    '1. Load and validate the PRP (check confidence score >= 7)',
+    '2. Execute all factory steps: Design, Generate Workflow, Generate Tools, Generate Subagents, Generate GitHub Actions, Generate CLAUDE.md',
+    '3. Run 3-level validation (syntax, unit, integration)',
+    `4. Package the system into systems/${systemName}/`,
+    '5. Update library/patterns.md and library/tool_catalog.md with new learnings',
+    '',
+    'Report: files generated, validation results, and next steps for the user.',
+  ].join('\n');
+
+  const result = await createJob(buildJobDesc);
+  console.log(`[AUTO-CHAIN] Build job created for ${systemName}: ${result.job_id}`);
+
+  return { systemName, confidence, jobId: result.job_id };
+}
+
 // POST /github/webhook - receive GitHub PR notifications
 app.post('/github/webhook', async (req, res) => {
   // Validate webhook secret
@@ -284,11 +338,20 @@ app.post('/github/webhook', async (req, res) => {
     // Add the summary to chat memory so Claude has context in future conversations
     const history = getHistory(TELEGRAM_CHAT_ID);
     history.push({ role: 'assistant', content: message });
+
+    // Auto-chain: if this was a PRP job with confidence >= 8, kick off the build
+    const autoChain = await checkPrpAutoChain(results);
+    if (autoChain) {
+      const chainMsg = `PRP generated with confidence ${autoChain.confidence}/10. Kicking off the build automatically.\n\nJob ID: <code>${autoChain.jobId.slice(0, 8)}</code>`;
+      await sendMessage(telegramBotToken, TELEGRAM_CHAT_ID, chainMsg);
+      history.push({ role: 'assistant', content: chainMsg });
+    }
+
     updateHistory(TELEGRAM_CHAT_ID, history);
 
     console.log(`Notified chat ${TELEGRAM_CHAT_ID} about job ${jobId.slice(0, 8)}`);
 
-    res.status(200).json({ ok: true, notified: true });
+    res.status(200).json({ ok: true, notified: true, autoChained: !!autoChain });
   } catch (err) {
     console.error('Failed to process GitHub webhook:', err);
     res.status(500).json({ error: 'Failed to process webhook' });
