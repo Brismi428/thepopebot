@@ -1,0 +1,63 @@
+name: WAT Factory
+
+on:
+  repository_dispatch:
+    types: [wat-factory]
+
+jobs:
+  run-agent:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: read
+
+    steps:
+      - name: Create job branch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          JOB_ID: ${{ github.event.client_payload.job_id }}
+          JOB_DESCRIPTION: ${{ github.event.client_payload.job_description }}
+        run: |
+          BRANCH="job/${JOB_ID}"
+
+          MAIN_SHA=$(gh api repos/${{ github.repository }}/git/ref/heads/main --jq '.object.sha')
+          gh api repos/${{ github.repository }}/git/refs --method POST \
+            -f ref="refs/heads/${BRANCH}" \
+            -f sha="${MAIN_SHA}"
+
+          CONTENT=$(printf '%s' "$JOB_DESCRIPTION" | base64 -w0)
+          gh api repos/${{ github.repository }}/contents/logs/${JOB_ID}/job.md --method PUT \
+            -f message="job: ${JOB_ID}" \
+            -f content="${CONTENT}" \
+            -f branch="${BRANCH}"
+
+      - name: Login to GHCR
+        if: startsWith(vars.IMAGE_URL, 'ghcr.io/')
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run thepopebot Agent
+        env:
+          IMAGE_URL: ${{ vars.IMAGE_URL }}
+          MODEL: ${{ vars.MODEL }}
+          JOB_ID: ${{ github.event.client_payload.job_id }}
+        run: |
+          BRANCH="job/${JOB_ID}"
+
+          if [ -n "$IMAGE_URL" ]; then
+            IMAGE="${IMAGE_URL}:latest"
+          else
+            IMAGE="stephengpope/thepopebot:latest"
+          fi
+          echo "Using image: $IMAGE"
+
+          docker run --rm \
+            -e REPO_URL="${{ github.server_url }}/${{ github.repository }}.git" \
+            -e BRANCH="${BRANCH}" \
+            -e SECRETS='${{ secrets.SECRETS }}' \
+            -e LLM_SECRETS='${{ secrets.LLM_SECRETS }}' \
+            -e MODEL="${MODEL}" \
+            "$IMAGE"
