@@ -12,7 +12,7 @@ const { isWhisperEnabled, transcribeAudio } = require('./tools/openai');
 const { chat } = require('./claude');
 const { toolDefinitions, toolExecutors } = require('./claude/tools');
 const { getHistory, updateHistory } = require('./claude/conversation');
-const { githubApi, getJobStatus } = require('./tools/github');
+const { githubApi, getJobStatus, dispatchWorkflow } = require('./tools/github');
 const { getApiKey } = require('./claude');
 const { render_md } = require('./utils/render-md');
 
@@ -69,6 +69,20 @@ app.post('/webhook', async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to create job' });
+  }
+});
+
+// POST /dispatch - test endpoint to dispatch workflows
+app.post('/dispatch', async (req, res) => {
+  const { event_type, client_payload } = req.body;
+  if (!event_type) return res.status(400).json({ error: 'Missing event_type field' });
+
+  try {
+    await dispatchWorkflow(event_type, client_payload || {});
+    res.json({ success: true, event_type, client_payload });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to dispatch workflow' });
   }
 });
 
