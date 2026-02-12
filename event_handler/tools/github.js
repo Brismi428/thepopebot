@@ -118,4 +118,20 @@ async function getJobStatus(jobId) {
   };
 }
 
-module.exports = { githubApi, getWorkflowRuns, getWorkflowRunJobs, getJobStatus };
+/**
+ * Dispatch a repository event to trigger workflows
+ * @param {string} eventType - The event type (e.g., 'wat-factory')
+ * @param {object} clientPayload - Payload data to pass to the workflow
+ * @returns {Promise<void>}
+ */
+async function dispatchWorkflow(eventType, clientPayload) {
+  await githubApi(`/repos/${GH_OWNER}/${GH_REPO}/dispatches`, {
+    method: 'POST',
+    body: JSON.stringify({
+      event_type: eventType,
+      client_payload: clientPayload,
+    }),
+  });
+}
+
+module.exports = { githubApi, getWorkflowRuns, getWorkflowRunJobs, getJobStatus, dispatchWorkflow };
