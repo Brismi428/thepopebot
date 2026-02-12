@@ -1,0 +1,36 @@
+{
+  "competitors": [
+    {
+      "name": "Example Competitor A",
+      "slug": "competitor-a",
+      "urls": {
+        "blog": "https://example.com/blog",
+        "pricing": "https://example.com/pricing",
+        "features": "https://example.com/features"
+      },
+      "selectors": {
+        "blog_items": "article, .post",
+        "price_value": ".price, .amount",
+        "feature_items": ".feature, .feature-card"
+      }
+    },
+    {
+      "name": "Example Competitor B",
+      "slug": "competitor-b",
+      "urls": {
+        "blog": "https://competitor-b.com/blog",
+        "pricing": "https://competitor-b.com/plans"
+      },
+      "selectors": {
+        "blog_items": ".blog-entry",
+        "price_value": "span.price"
+      }
+    }
+  ],
+  "email": {
+    "enabled": false,
+    "recipients": [
+      "team@yourcompany.com"
+    ]
+  }
+}

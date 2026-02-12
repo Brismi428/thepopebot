@@ -958,3 +958,250 @@ Combines elements of:
 Often used with:
 - **Intake > Enrich > Deliver** (state provides IDs or version numbers)
 - **Fan-Out > Process > Merge** (each parallel task gets unique ID from state)
+
+## 13. Multi-Source Weekly Monitor with Snapshot Comparison
+
+**Summary:** A scheduled monitoring system that crawls multiple websites weekly, stores Git-native snapshots, detects changes by comparing against previous week's state, and generates a unified digest report. Combines web scraping, state persistence, and change detection in a single workflow.
+
+### When to Use
+
+- Need to monitor 3+ websites/competitors on a recurring schedule (weekly/daily)
+- Want version-controlled audit trail of historical snapshots
+- Need to detect specific change types (new content, price changes, feature additions)
+- Generating comparative reports across multiple sources
+- Git-native storage is preferred over external databases
+
+### Steps
+
+1. **Load targets** -- Read configuration listing all URLs to monitor
+2. **Crawl sources** -- Scrape each target website (parallel if 3+ targets)
+3. **Compare snapshots** -- Load previous snapshot, diff against current
+4. **Detect changes** -- Identify new content, updated values, removed items
+5. **Generate report** -- Create unified digest across all sources
+6. **Save snapshots** -- Store current state with atomic writes + pruning
+7. **Commit to Git** -- Push report + snapshots to repository
+
+### Key Tools / MCPs
+
+- **Firecrawl MCP** -- primary web scraping (handles JS rendering)
+- **HTTP + BeautifulSoup** -- fallback scraping if Firecrawl unavailable
+- **Git** -- state persistence, version history, audit trail
+- **Python difflib** -- snapshot comparison logic
+- **Agent Teams** -- parallel crawling for 3+ sources (optional)
+
+### GitHub Actions Trigger
+
+```yaml
+on:
+  schedule:
+    - cron: '0 8 * * 1'   # Every Monday at 8 AM UTC (weekly)
+  workflow_dispatch:
+    inputs:
+      force_run:
+        type: boolean
+        default: false
+```
+
+### Example Use Cases
+
+- Weekly competitor monitoring (blog posts, pricing, features)
+- Daily government filing tracker (new documents, regulatory changes)
+- E-commerce price monitoring across multiple retailers
+- Multi-blog content aggregation with change detection
+- Product changelog aggregation across vendor sites
+
+### Subagent Architecture
+
+**Pattern uses specialist subagents** (default delegation mechanism):
+
+- **crawl-specialist** -- Web scraping with fallback strategies
+- **change-detector-specialist** -- Snapshot comparison and diff logic
+- **report-generator-specialist** -- Digest markdown generation
+- **snapshot-manager-specialist** -- State persistence and pruning
+
+Delegation is the default. Agent Teams is ONLY used for parallel crawling (3+ sources).
+
+### Agent Teams Parallelization
+
+**When:** 3+ sources configured  
+**Why:** Independent crawls with no data dependencies  
+**Benefit:** 3-4x speedup (5 sources: 75s sequential → 20s parallel)  
+**Trade-off:** None (same token cost, just parallel execution)
+
+**Team structure:**
+- Team lead: Coordinates crawlers, collects snapshots
+- Teammates: One per source, each delegates to `crawl-specialist`
+- Merge: Simple collection (no conflict resolution)
+
+**Sequential fallback:** Always available if Agent Teams disabled/fails
+
+### Git-Native Snapshot Storage
+
+**Pattern:** Commit JSON snapshots to `state/snapshots/{source}/YYYY-MM-DD.json`
+
+**Benefits:**
+- Version history (full audit trail)
+- Free hosting (no external database costs)
+- Rollback capability (`git checkout HEAD~10`)
+- Merge conflict detection
+- Queryable with `jq`, `grep`, `git log`
+
+**Storage management:**
+- Atomic writes (temp file + rename)
+- Automatic pruning (keep last 52 snapshots = 1 year)
+- Size limits (compress if > 10MB, drop excerpts)
+- Latest symlink/copy for easy access
+
+### Change Detection Logic
+
+**New content detection:**
+- Blog posts: Compare URLs or titles (case-insensitive)
+- Features: Compare feature titles (case-insensitive)
+
+**Value change detection:**
+- Pricing: Numeric comparison with delta calculation
+- Text: String comparison with change percentage
+
+**First-run handling:**
+- Missing previous snapshot → Treat all content as "new"
+- This is expected behavior, not an error
+
+### Report Generation
+
+**Output:** Markdown digest with:
+- Summary statistics across all sources
+- Per-source sections with detected changes
+- Links to new content
+- Price deltas with percentage change
+- Zero-changes report (still generated as "heartbeat")
+
+**Email delivery (optional):**
+- Plain-text version of markdown report
+- SMTP with retry logic
+- Failure is non-fatal (report already in Git)
+
+### Failure Handling
+
+| Scenario | Action | Rationale |
+|----------|--------|-----------|
+| 1 source fails crawl | SKIP source, continue | Partial data better than none |
+| All sources fail | HALT workflow | No data to process |
+| Previous snapshot missing | CONTINUE as first run | Normal initialization |
+| Snapshot too large (>10MB) | COMPRESS (drop excerpts) | Keep repo lean |
+| Email send fails | LOG error, continue | Report already in Git |
+| Git push fails | RETRY once, then HALT | Results not persisted = failure |
+
+**Per-source error isolation:** One failed crawl does not kill entire workflow.
+
+### Performance Characteristics
+
+**Sequential (1-2 sources):**
+- Time: ~15-30s per source
+- Suitable for: Small deployments
+
+**Parallel (3+ sources with Agent Teams):**
+- Time: ~20-40s total (regardless of source count)
+- Speedup: 3-4x for 5+ sources
+- Token cost: Same as sequential
+
+### Cost Analysis (3 sources, weekly)
+
+**GitHub Actions:**
+- Per run: ~5 minutes
+- Monthly: ~20 minutes (4 runs)
+- Within free tier: 2,000 min/month (private repos)
+
+**API costs:**
+- Firecrawl: ~$0.03-0.06/run (3 pages × 3 sources)
+- Claude: ~$0.05-0.15/run
+- Total: ~$0.08-0.21/run
+- Monthly: ~$0.32-0.84 (4 runs)
+
+### Key Learnings (from competitor-monitor build)
+
+**Selector-based extraction with fallback:**
+- Primary: CSS selectors configured per source
+- Fallback 1: Generic extraction (all links, headings)
+- Fallback 2: Full-page markdown
+- Rationale: Partial data beats no data
+
+**Firecrawl → HTTP fallback chain:**
+- Firecrawl handles JS-heavy sites (primary)
+- HTTP + BeautifulSoup if API unavailable (fallback)
+- No external dependency required (system works with stdlib only)
+
+**Git-native state is sufficient:**
+- No external database needed for weekly monitoring
+- Git history = audit trail
+- 52-week retention is adequate
+- Pruning prevents repo bloat
+
+**Zero-changes reports are valuable:**
+- Generate report even if no changes detected
+- Serves as "heartbeat" confirmation system ran
+- Prevents silent failures
+
+**Email is optional, not critical:**
+- Report committed to Git is the source of truth
+- Email failure should not fail workflow
+- Retry once, then log and continue
+
+**Atomic Git commits:**
+- Either all files commit or none
+- Retry logic with rebase prevents partial state
+- Failure to push = workflow fails (correct behavior)
+
+**Subagent specialization reduces complexity:**
+- Each subagent has clear, scoped responsibility
+- Tools are simple (single purpose)
+- Main agent coordinates, subagents execute
+- Agent Teams only for parallel execution, not delegation
+
+### Success Criteria
+
+- ✅ Report committed to Git (`reports/YYYY-MM-DD.md`)
+- ✅ Snapshots saved for all sources (`state/snapshots/{slug}/`)
+- ✅ At least 1 source successfully crawled
+- ✅ Workflow exits 0 (success)
+
+### Anti-Patterns to Avoid
+
+- **All-or-nothing crawling** -- Skip failed sources, continue with successful ones
+- **Hardcoded URLs** -- Always use config files
+- **Ignoring first-run** -- Missing previous snapshot is normal, not an error
+- **Skipping zero-changes report** -- Always generate (serves as heartbeat)
+- **External database for state** -- Git-native is simpler and free
+- **Manual snapshot management** -- Always use atomic writes + pruning tool
+- **Email as critical path** -- Report in Git is the source of truth
+
+### Related Patterns
+
+Combines elements of:
+- **Monitor > Detect > Alert** (scheduled change detection)
+- **Scrape > Process > Output** (web scraping with extraction)
+- **Collect > Transform > Store** (Git-native state persistence)
+- **Fan-Out > Process > Merge** (Agent Teams parallel crawling)
+
+Often paired with:
+- **Generate > Review > Publish** (report generation)
+- **Sequential State Management Pipeline** (if snapshot ordering matters)
+
+### Proven Compositions
+
+**Competitor intelligence pipeline:**
+- Monitor 3-5 competitor websites weekly
+- Detect blog posts, pricing changes, feature launches
+- Generate digest report with side-by-side comparison
+- Email to product/marketing teams
+
+**Regulatory filing tracker:**
+- Monitor government/regulatory sites daily
+- Detect new filings, rule changes, notices
+- Generate daily digest with links
+- Alert legal/compliance teams
+
+**Multi-vendor changelog aggregator:**
+- Monitor 10+ vendor documentation sites
+- Detect API changes, deprecation notices
+- Generate weekly engineering digest
+- Reduce surprise breaking changes
