@@ -4,12 +4,30 @@ __pycache__/
 *$py.class
 *.so
 .Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
 venv/
-env/
 ENV/
+env/
 .venv
 
-# Environment files (never commit secrets)
+# Environment files (contain secrets)
 .env
 
 # IDE
@@ -23,16 +41,10 @@ ENV/
 .DS_Store
 Thumbs.db
 
-# Testing artifacts
+# Logs
+*.log
+
+# Test files
 .pytest_cache/
 .coverage
 htmlcov/
-*.log
-
-# Agent output (committed via PRs, but ignore during development)
-agent_output/
-
-# Temporary files
-tmp/
-temp/
-*.tmp

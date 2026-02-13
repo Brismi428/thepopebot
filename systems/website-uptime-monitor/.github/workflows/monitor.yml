@@ -1,25 +1,24 @@
 name: Website Uptime Monitor
 
 on:
+  # Primary trigger: every 5 minutes
   schedule:
-    # Run every 5 minutes
-    # Note: GitHub Actions cron has ±5 minute variance under load
     - cron: '*/5 * * * *'
   
+  # Manual trigger with optional URL override
   workflow_dispatch:
-    # Manual trigger for testing
     inputs:
       url:
-        description: 'URL to check (overrides MONITOR_URL env var)'
+        description: 'URL to check (optional - overrides default)'
         required: false
         type: string
       timeout:
-        description: 'Timeout in seconds'
+        description: 'Request timeout in seconds'
         required: false
-        default: '10'
-        type: string
+        type: number
+        default: 10
 
-# Prevent concurrent runs to avoid git push conflicts
+# Prevent concurrent runs to avoid git conflicts
 concurrency:
   group: uptime-monitor
   cancel-in-progress: false
@@ -29,15 +28,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     
-    env:
-      MONITOR_URL: ${{ vars.MONITOR_URL || 'https://example.com' }}
-      TIMEOUT_SECONDS: ${{ vars.TIMEOUT_SECONDS || '10' }}
-    
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0  # Full history for git operations
       
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -49,68 +44,83 @@ jobs:
         run: |
           pip install -r requirements.txt
       
-      - name: Configure Git
+      - name: Determine URL to check
+        id: set-url
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+          # Use workflow input if provided, otherwise use default
+          if [ -n "${{ github.event.inputs.url }}" ]; then
+            echo "URL=${{ github.event.inputs.url }}" >> $GITHUB_ENV
+          else
+            echo "URL=${URL:-https://example.com}" >> $GITHUB_ENV
+          fi
+          
+          # Set timeout
+          if [ -n "${{ github.event.inputs.timeout }}" ]; then
+            echo "TIMEOUT=${{ github.event.inputs.timeout }}" >> $GITHUB_ENV
+          else
+            echo "TIMEOUT=${TIMEOUT:-10}" >> $GITHUB_ENV
+          fi
+        env:
+          URL: ${{ vars.MONITOR_URL }}
+          TIMEOUT: ${{ vars.MONITOR_TIMEOUT }}
       
       - name: Run uptime check
         id: check
         run: |
-          # Use workflow_dispatch input if provided, otherwise use environment variable
-          URL="${{ inputs.url || env.MONITOR_URL }}"
-          TIMEOUT="${{ inputs.timeout || env.TIMEOUT_SECONDS }}"
-          
-          echo "Checking URL: $URL with timeout: ${TIMEOUT}s"
-          
-          # Run the check (exit code will be 0 if up, 1 if down)
-          python tools/check_url.py --url "$URL" --timeout "$TIMEOUT" --csv logs/uptime_log.csv || true
-          
-          # Capture exit code for status reporting
-          EXIT_CODE=$?
-          echo "exit_code=$EXIT_CODE" >> $GITHUB_OUTPUT
+          python tools/monitor.py \
+            --url "${{ env.URL }}" \
+            --timeout "${{ env.TIMEOUT }}"
+        continue-on-error: true
       
       - name: Commit results
         run: |
-          # Check if there are changes to commit
-          if [[ -n $(git status --porcelain logs/uptime_log.csv) ]]; then
-            git add logs/uptime_log.csv
-            
-            # Extract status from the latest CSV entry for commit message
-            LAST_LINE=$(tail -n 1 logs/uptime_log.csv)
-            TIMESTAMP=$(echo "$LAST_LINE" | cut -d',' -f1)
-            STATUS_CODE=$(echo "$LAST_LINE" | cut -d',' -f3)
-            IS_UP=$(echo "$LAST_LINE" | cut -d',' -f5)
-            
-            if [[ "$IS_UP" == "True" ]]; then
-              STATUS_EMOJI="✅"
-              STATUS_TEXT="UP"
-            else
-              STATUS_EMOJI="❌"
-              STATUS_TEXT="DOWN"
-            fi
-            
-            git commit -m "Uptime check: ${STATUS_EMOJI} ${STATUS_TEXT} (${STATUS_CODE}) at ${TIMESTAMP}"
-            
-            # Push with retry logic for conflict resolution
-            if ! git push; then
-              echo "Push failed, attempting pull with rebase..."
-              git pull --rebase
-              git push
-            fi
-          else
+          # Configure git
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # Check if there are changes
+          if git diff --quiet data/uptime_log.csv; then
             echo "No changes to commit"
+            exit 0
           fi
+          
+          # Stage only the CSV file
+          git add data/uptime_log.csv
+          
+          # Determine status for commit message
+          if [ "${{ steps.check.outcome }}" == "success" ]; then
+            STATUS="UP"
+          else
+            STATUS="DOWN"
+          fi
+          
+          # Commit with descriptive message
+          git commit -m "Uptime check: ${STATUS} ${{ env.URL }} at $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          
+          # Push with retry logic for race conditions
+          for i in {1..3}; do
+            if git push; then
+              echo "Push succeeded on attempt $i"
+              break
+            else
+              if [ $i -lt 3 ]; then
+                echo "Push failed, retrying after rebase..."
+                git pull --rebase origin ${{ github.ref_name }}
+                sleep 2
+              else
+                echo "Push failed after 3 attempts"
+                exit 1
+              fi
+            fi
+          done
       
       - name: Report status
         if: always()
         run: |
-          EXIT_CODE="${{ steps.check.outputs.exit_code }}"
-          
-          if [[ "$EXIT_CODE" == "0" ]]; then
-            echo "✅ Website is UP"
+          if [ "${{ steps.check.outcome }}" == "success" ]; then
+            echo "✅ Site is UP: ${{ env.URL }}"
+            exit 0
           else
-            echo "❌ Website is DOWN"
-            # Note: The workflow will show as "failed" when exit code is non-zero,
-            # providing at-a-glance visibility in the GitHub Actions UI
+            echo "❌ Site is DOWN: ${{ env.URL }}"
+            exit 1
           fi
