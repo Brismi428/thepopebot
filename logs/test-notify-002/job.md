@@ -1,0 +1,1 @@
+Simple test. Create a file called tmp/hello.md with the text Hello from thepopebot.
