@@ -275,3 +275,64 @@ Any REST API can be integrated into a WAT system without an MCP:
 5. Document the API in the system's CLAUDE.md
 
 The factory is never limited to the MCPs listed here. This registry helps with tool selection, but any API accessible via HTTP can be wrapped as a Python tool.
+
+---
+
+## Media Processing
+
+### NCA Toolkit (Self-Hosted)
+- **Description**: Self-hosted media processing API running at `https://media.wat-factory.cloud`. Replaces services like CloudConvert, Placid, and PDF.co. Handles audio, video, image conversion, transcription, captioning, and more.
+- **Base URL**: `https://media.wat-factory.cloud`
+- **Auth**: `x-api-key` header with `NCA_API_KEY` environment variable
+- **Key Capabilities**:
+  - Transcribe audio/video to text (Whisper) — `POST /v1/media/transcribe`
+  - Convert media between formats — `POST /v1/media/convert`
+  - Convert to MP3 — `POST /v1/media/convert/mp3`
+  - Add captions to video — `POST /v1/video/caption`
+  - Concatenate videos — `POST /v1/video/concatenate`
+  - Concatenate audio — `POST /v1/audio/concatenate`
+  - Trim video — `POST /v1/video/trim`
+  - Cut segments from video — `POST /v1/video/cut`
+  - Split video — `POST /v1/video/split`
+  - Extract thumbnail — `POST /v1/video/thumbnail`
+  - Screenshot webpage — `POST /v1/image/screenshot/webpage`
+  - Convert image to video — `POST /v1/image/convert/video`
+  - Download media from URL (yt-dlp) — `POST /v1/BETA/media/download`
+  - Detect silence — `POST /v1/media/silence`
+  - Extract metadata — `POST /v1/media/metadata`
+  - Generate ASS subtitles — `POST /v1/media/generate/ass`
+  - Upload to S3/R2 — `POST /v1/s3/upload`
+  - Run FFmpeg commands — `POST /v1/ffmpeg/compose`
+  - Execute Python code — `POST /v1/code/execute/python`
+  - Test connectivity — `GET /v1/toolkit/test`
+  - Check job status — `GET /v1/toolkit/job/status?job_id=<id>`
+- **Common Use Cases**: Video transcription, audio/video format conversion, auto-captioning videos for social media, webpage screenshots, media downloading, thumbnail extraction
+- **Tool Pattern**:
+  ```python
+  import os, requests
+  
+  NCA_URL = "https://media.wat-factory.cloud"
+  headers = {"x-api-key": os.environ["NCA_API_KEY"], "Content-Type": "application/json"}
+  
+  # Transcribe a video
+  resp = requests.post(f"{NCA_URL}/v1/media/transcribe", headers=headers, json={
+      "url": "https://example.com/video.mp4",
+      "output": "text"  # or "srt", "vtt"
+  })
+  
+  # Download media (YouTube, etc.)
+  resp = requests.post(f"{NCA_URL}/v1/BETA/media/download", headers=headers, json={
+      "url": "https://youtube.com/watch?v=VIDEO_ID",
+      "quality": "best"
+  })
+  
+  # Screenshot a webpage
+  resp = requests.post(f"{NCA_URL}/v1/image/screenshot/webpage", headers=headers, json={
+      "url": "https://example.com",
+      "width": 1920,
+      "height": 1080
+  })
+  ```
+- **Secret**: `NCA_API_KEY`
+- **Fallback**: Direct FFmpeg via subprocess (limited — no transcription, no cloud upload)
+- **Notes**: Supports async processing with `webhook_url` parameter for long-running jobs. All media URLs must be publicly accessible. Results include `run_time`, `queue_time`, and `total_time` metrics.
