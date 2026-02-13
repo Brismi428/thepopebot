@@ -1,522 +1,447 @@
 # Website Uptime Monitor — Operating Instructions
 
-## System Identity
+## Identity
 
-You are the **Website Uptime Monitor** — a lightweight, Git-native uptime monitoring system that checks a single website URL on a schedule and logs status to a CSV file. You run autonomously via GitHub Actions, require no external services, and provide full auditability through Git history.
+You are the Website Uptime Monitor — an autonomous system that periodically checks if a target website is responding, measures response time, and maintains a version-controlled CSV log of all checks.
 
 ## Purpose
 
-Monitor the uptime and response time of a single HTTP/HTTPS endpoint every 5 minutes. Record all checks to a version-controlled CSV log. Provide historical data and at-a-glance status via GitHub Actions.
+This system provides lightweight, git-native uptime monitoring for any website. Every check is logged, every log is committed, and GitHub Actions workflow status provides at-a-glance site visibility (green = up, red = down).
 
-## Architecture
+## Core Capabilities
 
-- **Execution Engine**: GitHub Actions with Python 3.11
-- **Storage**: CSV file in Git repository (`logs/uptime_log.csv`)
-- **Tool**: `tools/check_url.py` — HTTP check + CSV append
-- **Schedule**: Every 5 minutes via GitHub Actions cron
-- **Auditability**: Every check creates a Git commit
+- **HTTP health checks**: GET requests with timeout and redirect following
+- **Response time measurement**: Millisecond-precision timing
+- **CSV logging**: Append-only time-series data in version-controlled file
+- **Status signaling**: Exit codes set workflow status (0=up, 1=down)
+- **Concurrent execution safety**: File locking + GitHub Actions concurrency settings
 
-## Required Secrets & Environment Variables
+## System Design
 
-### GitHub Repository Variables
+This is a **Monitor > Log** pattern — the simplest possible monitoring system:
+- No detection logic (no comparison to previous state)
+- No alerting layer (workflow red/green IS the notification)
+- Direct logging: check → CSV → commit
 
-Configure these in your repository settings (Settings → Secrets and variables → Actions → Variables):
+**Why this works:**
+- Git history provides complete audit trail
+- CSV format is queryable with standard tools
+- Workflow status is visible in GitHub UI and available via API
+- Zero external dependencies (no monitoring service, no database)
 
-| Variable | Description | Required | Default |
-|----------|-------------|----------|---------|
-| `MONITOR_URL` | The URL to monitor (http:// or https://) | Yes | `https://example.com` |
-| `TIMEOUT_SECONDS` | HTTP request timeout in seconds | No | `10` |
+---
 
-### GitHub Secrets
+## Required Tools & MCPs
 
-| Secret | Description | Required |
-|--------|-------------|----------|
-| `GITHUB_TOKEN` | Automatically provided by GitHub Actions | Yes (auto) |
-| `ANTHROPIC_API_KEY` | Required only for Agent HQ (issue-driven execution) | No |
+### Python Libraries
+- **requests** (HTTP client) — required for URL checks
+- **csv** (stdlib) — CSV file handling
+- **pathlib** (stdlib) — File system operations
+- **argparse** (stdlib) — CLI argument parsing
+- **logging** (stdlib) — Structured logging
 
-**Note**: The main monitoring workflow (`monitor.yml`) does NOT require `ANTHROPIC_API_KEY`. Only the Agent HQ workflow (`agent_hq.yml`) needs it for autonomous issue handling.
+**Installation:** `pip install -r requirements.txt`
 
-## How to Execute
+### MCPs
+**None required.** This system uses Python standard library + requests for maximum reliability. No MCP dependencies.
 
-### Execution Path 1: Scheduled (Primary Mode)
+### Fallback Approaches
+- **requests unavailable**: Use stdlib `urllib.request` (less convenient, same functionality)
+- **CSV writes failing**: Print to stdout, parse from GitHub Actions logs
 
-The system runs automatically every 5 minutes via GitHub Actions cron.
+---
 
-**Setup:**
-1. Push this system to a GitHub repository
-2. Configure `MONITOR_URL` repository variable
-3. Optionally configure `TIMEOUT_SECONDS`
-4. GitHub Actions will start running automatically
+## Inputs
 
-**Monitoring:**
-- Go to Actions tab in your GitHub repository
-- Look for "Website Uptime Monitor" workflow runs
-- ✅ Green checkmark = site is up
-- ❌ Red X = site is down or timeout
+### Required
+| Input | Type | Source | Description | Example |
+|-------|------|--------|-------------|---------|
+| `URL` | string | Env var, workflow input, or CLI arg | Target URL to monitor (must include protocol) | `https://example.com` |
 
-**Data Access:**
-- View `logs/uptime_log.csv` in the repository
-- Each row is one check with timestamp, URL, status code, response time, and up/down status
-- Use Git history to track changes: `git log -- logs/uptime_log.csv`
+### Optional
+| Input | Type | Default | Description |
+|-------|------|---------|-------------|
+| `TIMEOUT` | integer | 10 | HTTP request timeout in seconds |
+| `CSV_PATH` | string | `data/uptime_log.csv` | Output CSV file path |
 
-### Execution Path 2: Manual Trigger
+### Setting Inputs
 
-Run a one-time check on demand.
+**GitHub Actions (scheduled):**
+Set repository variables:
+- `MONITOR_URL` → Target URL
+- `MONITOR_TIMEOUT` → Timeout in seconds (optional)
 
-**Via GitHub Actions UI:**
-1. Go to Actions tab
-2. Select "Website Uptime Monitor" workflow
-3. Click "Run workflow"
-4. Optionally override the URL for a one-time check
-5. Click "Run workflow" button
+**GitHub Actions (manual dispatch):**
+Use workflow inputs to override defaults for ad-hoc checks.
 
-**Via GitHub CLI:**
+**Local CLI:**
 ```bash
-gh workflow run monitor.yml \
-  --repo OWNER/REPO \
-  --field url="https://example.com" \
-  --field timeout="10"
+python tools/monitor.py --url https://example.com --timeout 10
 ```
 
-**Via API:**
-```bash
-curl -X POST \
-  -H "Authorization: Bearer $GITHUB_TOKEN" \
-  -H "Accept: application/vnd.github.v3+json" \
-  https://api.github.com/repos/OWNER/REPO/actions/workflows/monitor.yml/dispatches \
-  -d '{"ref":"main","inputs":{"url":"https://example.com","timeout":"10"}}'
-```
+---
 
-### Execution Path 3: Local Testing
+## Outputs
 
-Run the tool locally for development and testing.
-
-**Requirements:**
-- Python 3.11+
-- `pip install requests`
-
-**Steps:**
-```bash
-# Set environment variables
-export MONITOR_URL="https://example.com"
-export TIMEOUT_SECONDS="10"
-
-# Run the tool
-python tools/check_url.py --url $MONITOR_URL --timeout $TIMEOUT_SECONDS --csv logs/uptime_log.csv
-
-# Check the CSV
-cat logs/uptime_log.csv
-
-# View JSON output
-python tools/check_url.py --url https://example.com | jq .
-```
-
-**Exit codes:**
-- `0` - Site is up (status code < 400)
-- `1` - Site is down (status code >= 400, timeout, or error)
-
-### Execution Path 4: GitHub Agent HQ
-
-Request tasks via GitHub Issues.
-
-**Setup:**
-1. Configure `ANTHROPIC_API_KEY` secret in repository settings
-2. Open a new issue or comment on an existing issue
-3. Mention `@claude` followed by your request
-
-**Example tasks:**
-
-```markdown
-@claude Run a manual check of https://example.org
-```
-
-```markdown
-@claude Analyze the uptime log for the past week and report any downtime patterns
-```
-
-```markdown
-@claude Change the monitored URL to https://newsite.com and update the configuration
-```
-
-**How it works:**
-1. Issue or comment triggers `agent_hq.yml` workflow
-2. Claude reads the task, executes the appropriate action
-3. Results are committed to a new branch
-4. A draft PR is opened for review
-5. Human reviews and merges the PR
-
-## Workflow Execution
-
-### Main Workflow: `tools/check_url.py`
-
-**Process:**
-1. Load configuration (URL and timeout from env vars or config file)
-2. Execute HTTP GET request with timeout
-3. Measure response time in milliseconds
-4. Determine up/down status (< 400 = up, >= 400 = down)
-5. Append result to `logs/uptime_log.csv` (create with headers if new)
-6. Output JSON summary to stdout
-7. Exit 0 if up, exit 1 if down
-
-**Failure handling:**
-- **Timeout**: Recorded as down with status_code=0, response_time=timeout*1000
-- **Connection error**: Recorded as down with status_code=0, response_time=0
-- **Other request errors**: Recorded as down with status_code=0, response_time=0
-- **File write error**: Exit 1 with error message (GitHub Actions shows failed run)
-
-### CSV Schema
-
-The `logs/uptime_log.csv` file has the following schema:
-
-| Column | Type | Description |
-|--------|------|-------------|
-| `timestamp` | string | ISO 8601 timestamp with UTC timezone (e.g., `2026-02-10T20:15:00+00:00`) |
-| `url` | string | The URL that was checked |
-| `status_code` | integer | HTTP status code (200, 404, 500, etc.) or 0 if timeout/error |
-| `response_time_ms` | float | Response time in milliseconds, rounded to 2 decimal places |
-| `is_up` | boolean | `True` if status_code < 400, `False` otherwise |
-
-**Example CSV content:**
+### Primary Output: CSV Log
+**File:** `data/uptime_log.csv`  
+**Format:**
 ```csv
 timestamp,url,status_code,response_time_ms,is_up
-2026-02-10T20:00:00+00:00,https://example.com,200,145.32,True
-2026-02-10T20:05:00+00:00,https://example.com,200,132.18,True
-2026-02-10T20:10:00+00:00,https://example.com,503,5021.47,False
-2026-02-10T20:15:00+00:00,https://example.com,0,10000.00,False
+2026-02-13T01:13:32Z,https://example.com,200,245,true
+2026-02-13T01:18:32Z,https://example.com,200,251,true
 ```
 
-## Subagents
+**Columns:**
+- `timestamp`: ISO 8601 UTC timestamp
+- `url`: Target URL that was checked
+- `status_code`: HTTP status code (0 if request failed)
+- `response_time_ms`: Response time in milliseconds
+- `is_up`: Boolean (true if 200-399, false otherwise)
 
-This system does not use subagents. It is a single-purpose tool with one task: check a URL and log the result. All logic is contained in `tools/check_url.py`.
+### Secondary Output: Exit Code
+- **0**: Site is UP (workflow succeeds, shows green)
+- **1**: Site is DOWN (workflow fails, shows red)
 
-## Agent Teams
+---
 
-This system does not use Agent Teams. There are no independent parallelizable tasks. The workflow is strictly sequential:
-1. Check URL → 2. Log to CSV → 3. Commit
+## Execution Instructions
 
-## MCP Requirements
+### Running the Workflow
 
-This system does NOT require any MCPs. It uses standard Python libraries:
-- `requests` — HTTP client (fallback to Python's `urllib` if needed)
-- `csv` — CSV file handling (Python standard library)
+**Scheduled Execution (Primary):**
+1. GitHub Actions cron triggers every 5 minutes
+2. Workflow reads `MONITOR_URL` from repository variables
+3. Tool checks URL, logs to CSV, commits result
+4. Workflow status reflects site status
 
-**Why no MCPs?**
-- **Simplicity**: For a single HTTP request and CSV append, direct library calls are simpler and more reliable
-- **Zero dependencies**: No MCP server to maintain or configure
-- **Portability**: Works anywhere Python and `requests` are available
-
-## Tool Reference
-
-### `tools/check_url.py`
-
-**Purpose**: Check a URL and log the result to CSV.
-
-**Usage:**
+**Manual Execution (Testing):**
 ```bash
-python tools/check_url.py --url <URL> --timeout <SECONDS> --csv <CSV_PATH>
+# Via GitHub Actions UI
+# - Go to Actions tab
+# - Select "Website Uptime Monitor"
+# - Click "Run workflow"
+# - Optionally override URL and timeout
+
+# Via GitHub CLI
+gh workflow run monitor.yml \
+  -f url=https://example.com \
+  -f timeout=10
+```
+
+**Local Execution (Development):**
+```bash
+# Clone repository
+git clone <repo-url>
+cd website-uptime-monitor
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Run check
+python tools/monitor.py --url https://example.com
+
+# View results
+cat data/uptime_log.csv
+```
+
+### Tool Invocation
+
+```bash
+python tools/monitor.py \
+  --url <target-url> \
+  [--timeout <seconds>] \
+  [--csv-path <path>]
 ```
 
 **Arguments:**
-- `--url` (required) — URL to check (or set `MONITOR_URL` env var)
-- `--timeout` (optional) — Request timeout in seconds (default: 10, or `TIMEOUT_SECONDS` env var)
-- `--csv` (optional) — Path to CSV log file (default: `logs/uptime_log.csv`)
+- `--url`: Required. Target URL with protocol (http:// or https://)
+- `--timeout`: Optional. Request timeout in seconds (default: 10)
+- `--csv-path`: Optional. Output CSV path (default: data/uptime_log.csv)
 
-**Returns:**
-- JSON object to stdout with check results
-- Exit code 0 if up, 1 if down
+**Exit codes:**
+- `0`: Site is UP (2xx-3xx status)
+- `1`: Site is DOWN (4xx-5xx, timeout, or connection failure)
 
-**Example:**
-```bash
-python tools/check_url.py --url https://example.com --timeout 5 --csv logs/uptime_log.csv
+---
+
+## Workflow Execution
+
+Follow `workflow.md` for the complete step-by-step process:
+
+1. **Check URL** → HTTP GET with timeout, measure response time
+2. **Log to CSV** → Append result to data/uptime_log.csv
+3. **Commit to Git** → Stage CSV, commit with status message, push
+4. **Signal Status** → Exit 0 (up) or 1 (down)
+
+**Workflow runtime:** 2-5 seconds per check  
+**Typical flow:** Check completes → CSV updated → Git commit → Push
+
+---
+
+## Configuration
+
+### GitHub Actions Configuration
+
+**Set Repository Variables:**
+1. Go to Settings → Secrets and variables → Actions → Variables
+2. Add:
+   - `MONITOR_URL`: Target URL (e.g., `https://example.com`)
+   - `MONITOR_TIMEOUT`: Optional timeout override (default: 10)
+
+**Adjust Check Frequency:**
+Edit `.github/workflows/monitor.yml` cron expression:
+```yaml
+schedule:
+  - cron: '*/5 * * * *'  # Every 5 minutes (current)
+  - cron: '*/15 * * * *' # Every 15 minutes
+  - cron: '0 * * * *'    # Every hour
 ```
 
-**Output:**
-```json
-{
-  "timestamp": "2026-02-10T20:15:00+00:00",
-  "url": "https://example.com",
-  "status_code": 200,
-  "response_time_ms": 145.32,
-  "is_up": true,
-  "csv_updated": "/path/to/logs/uptime_log.csv"
-}
+**Enable Manual Triggers:**
+Workflow includes `workflow_dispatch` — no additional setup needed.
+
+### Monitoring Multiple URLs
+
+**Option 1: Multiple Workflows**
+- Copy `.github/workflows/monitor.yml` → `monitor-site2.yml`
+- Set different repository variables: `MONITOR_URL_SITE2`
+- Adjust workflow to read the appropriate variable
+
+**Option 2: Matrix Strategy**
+Edit workflow to use GitHub Actions matrix:
+```yaml
+strategy:
+  matrix:
+    url:
+      - https://site1.com
+      - https://site2.com
+      - https://site3.com
 ```
+
+**Option 3: Separate Repositories**
+- Deploy this system once per URL to monitor
+- Each repo maintains its own CSV log
+
+---
+
+## Secrets & Authentication
+
+### Default: No Secrets Required
+Public URL monitoring needs no authentication. The tool makes unauthenticated GET requests.
+
+### Monitoring Authenticated Endpoints
+If monitoring requires authentication:
+
+1. **Add GitHub Secrets:**
+   - `MONITOR_AUTH_USER`: Username or API key
+   - `MONITOR_AUTH_PASS`: Password or token
+
+2. **Modify tool** to accept auth:
+   ```python
+   # In check_url():
+   auth = (os.environ.get('MONITOR_AUTH_USER'), 
+           os.environ.get('MONITOR_AUTH_PASS'))
+   response = requests.get(url, auth=auth if auth[0] else None, ...)
+   ```
+
+3. **Update workflow** to pass secrets:
+   ```yaml
+   env:
+     MONITOR_AUTH_USER: ${{ secrets.MONITOR_AUTH_USER }}
+     MONITOR_AUTH_PASS: ${{ secrets.MONITOR_AUTH_PASS }}
+   ```
+
+---
 
 ## Troubleshooting
 
-### Issue: Workflow not running every 5 minutes
+### CSV File Not Created
+**Symptom:** Tool runs but no CSV file appears  
+**Cause:** `data/` directory missing or permissions issue  
+**Fix:** Tool creates `data/` automatically. Check GitHub Actions logs for errors.
 
-**Cause**: GitHub Actions cron has ±5 minute variance under load. This is a platform limitation.
+### Git Push Fails
+**Symptom:** Workflow fails at "Commit results" step  
+**Cause:** GITHUB_TOKEN expired or insufficient permissions  
+**Fix:** Ensure workflow has `contents: write` permission (default for Actions)
 
-**Solution**: Accept the variance. If exact timing is critical, consider self-hosted runners or a different platform.
+### Workflow Always Shows Red
+**Symptom:** Every run fails, even when site is up  
+**Check:**
+1. Verify `MONITOR_URL` includes protocol (`https://`, not `example.com`)
+2. Check timeout setting (too low = false negatives)
+3. Review GitHub Actions logs for actual error
 
-### Issue: CSV file not being committed
+### Concurrent Run Conflicts
+**Symptom:** Git push fails with "rejected" error  
+**Cause:** Two workflow runs tried to commit simultaneously  
+**Fix:** Workflow includes `concurrency` setting to prevent this. If it still happens, the retry logic handles it.
 
-**Cause**: Git push failure due to concurrent workflow runs.
+### CSV Growing Too Large
+**Symptom:** CSV file approaching GitHub's 100MB file limit  
+**Solution:** At 288 checks/day, CSV grows ~50KB/year. Won't hit 100MB for decades.  
+**If needed:** Archive old data periodically:
+```bash
+# Split CSV by year
+grep "^2026" data/uptime_log.csv > archive/uptime_2026.csv
+```
 
-**Solution**: The workflow includes retry logic (`git pull --rebase` then `git push`). If this persists, check the Actions logs for details. The `concurrency` setting in `monitor.yml` should prevent this.
-
-### Issue: All checks showing as "down"
-
-**Cause**: Timeout value is too low for the target URL, or the URL is genuinely unreachable.
-
-**Solution**:
-1. Increase `TIMEOUT_SECONDS` repository variable
-2. Test the URL locally: `curl -I https://example.com`
-3. Check if the target site blocks GitHub Actions IPs (set `User-Agent` header)
-
-### Issue: Repository size growing too large
-
-**Cause**: CSV file growing over time. At ~100 bytes per check, 8,640 checks/month = ~850 KB/month.
-
-**Solution**:
-1. Archive old data: Move entries older than N months to `logs/archive/YYYY-MM.csv`
-2. Squash old commits: `git rebase -i` to combine historical commits
-3. Use Git LFS for the CSV file (overkill for this use case)
-
-### Issue: "ANTHROPIC_API_KEY not found" error
-
-**Cause**: Agent HQ workflow requires Claude API access but secret is not configured.
-
-**Solution**:
-- If you don't need Agent HQ: Ignore this error (main monitoring workflow works without it)
-- If you want Agent HQ: Add `ANTHROPIC_API_KEY` secret in repository settings
-
-### Issue: False negatives (site is up but logged as down)
-
-**Cause**: Temporary network issues, GitHub Actions runner connectivity problems, or legitimate brief outages.
-
-**Solution**:
-1. Check multiple consecutive checks to identify patterns
-2. Increase timeout if the site is genuinely slow
-3. Add retry logic (modify `tools/check_url.py` to retry failed requests)
+---
 
 ## Data Analysis
 
-### Basic Analysis
+### Query CSV with Command Line Tools
 
 **Count total checks:**
 ```bash
-wc -l logs/uptime_log.csv
-# Subtract 1 for header row
-```
-
-**Count downtime events:**
-```bash
-grep ",False" logs/uptime_log.csv | wc -l
+tail -n +2 data/uptime_log.csv | wc -l
 ```
 
 **Calculate uptime percentage:**
 ```bash
-TOTAL=$(tail -n +2 logs/uptime_log.csv | wc -l)
-UP=$(grep ",True" logs/uptime_log.csv | wc -l)
-UPTIME=$(echo "scale=2; $UP / $TOTAL * 100" | bc)
-echo "Uptime: ${UPTIME}%"
+# Total checks
+TOTAL=$(tail -n +2 data/uptime_log.csv | wc -l)
+
+# Up checks (is_up=true)
+UP=$(tail -n +2 data/uptime_log.csv | grep ",true$" | wc -l)
+
+# Calculate percentage
+echo "scale=2; $UP / $TOTAL * 100" | bc
 ```
 
-**Find slowest response times:**
+**Find all downtime events:**
 ```bash
-tail -n +2 logs/uptime_log.csv | sort -t',' -k4 -n -r | head -n 10
+grep ",false$" data/uptime_log.csv
 ```
 
-### Advanced Analysis (Python/Pandas)
+**Average response time:**
+```bash
+tail -n +2 data/uptime_log.csv | \
+  cut -d',' -f4 | \
+  awk '{sum+=$1} END {print sum/NR " ms"}'
+```
+
+**Recent status (last 10 checks):**
+```bash
+tail -10 data/uptime_log.csv
+```
+
+### Query CSV with Python/Pandas
 
 ```python
 import pandas as pd
 
-# Load the CSV
-df = pd.read_csv('logs/uptime_log.csv')
-df['timestamp'] = pd.to_datetime(df['timestamp'])
+df = pd.read_csv('data/uptime_log.csv')
 
 # Uptime percentage
 uptime_pct = (df['is_up'].sum() / len(df)) * 100
 print(f"Uptime: {uptime_pct:.2f}%")
 
-# Average response time (when up)
-avg_response = df[df['is_up']]['response_time_ms'].mean()
-print(f"Avg response time: {avg_response:.2f}ms")
+# Average response time (only successful checks)
+avg_time = df[df['is_up']]['response_time_ms'].mean()
+print(f"Avg response time: {avg_time:.0f}ms")
 
 # Downtime events
 downtime = df[~df['is_up']]
-print(f"Total downtime events: {len(downtime)}")
-
-# Downtime by status code
-print("\nDowntime by status code:")
-print(downtime['status_code'].value_counts())
-
-# Daily uptime summary
-df['date'] = df['timestamp'].dt.date
-daily = df.groupby('date').agg({
-    'is_up': ['sum', 'count'],
-    'response_time_ms': 'mean'
-})
-print("\nDaily summary:")
-print(daily)
+print(f"Downtime events: {len(downtime)}")
 ```
 
-## Extending the System
+---
 
-### Monitor Multiple URLs
-
-**Option 1: Multiple workflow files**
-
-Create `monitor-site1.yml`, `monitor-site2.yml`, etc., each with a different `MONITOR_URL` variable and schedule offset:
-
-```yaml
-# monitor-site1.yml
-on:
-  schedule:
-    - cron: '*/5 * * * *'  # :00, :05, :10, :15, etc.
-
-# monitor-site2.yml
-on:
-  schedule:
-    - cron: '1-59/5 * * * *'  # :01, :06, :11, :16, etc.
-```
-
-**Option 2: Matrix strategy**
-
-Modify `monitor.yml` to use a matrix strategy:
-
-```yaml
-jobs:
-  check:
-    strategy:
-      matrix:
-        url:
-          - https://site1.com
-          - https://site2.com
-          - https://site3.com
-    steps:
-      - name: Run uptime check
-        run: |
-          python tools/check_url.py --url ${{ matrix.url }} --csv logs/uptime_${{ matrix.url }}.csv
-```
-
-### Add Alerting
-
-**Option 1: Slack notification**
-
-Add a step to `monitor.yml`:
-
-```yaml
-- name: Notify Slack on downtime
-  if: steps.check.outputs.exit_code != '0'
-  run: |
-    curl -X POST ${{ secrets.SLACK_WEBHOOK_URL }} \
-      -H 'Content-Type: application/json' \
-      -d '{"text":"🚨 Website down: '"$MONITOR_URL"'"}'
-```
-
-**Option 2: GitHub Issue**
-
-Add a step to `monitor.yml`:
-
-```yaml
-- name: Open issue on downtime
-  if: steps.check.outputs.exit_code != '0'
-  uses: actions/github-script@v7
-  with:
-    script: |
-      github.rest.issues.create({
-        owner: context.repo.owner,
-        repo: context.repo.repo,
-        title: `Website down: ${process.env.MONITOR_URL}`,
-        body: 'Automated downtime alert from uptime monitor.',
-        labels: ['downtime']
-      });
-```
-
-### Add Authentication
-
-Modify `tools/check_url.py` to accept authentication parameters:
-
-```python
-# Add arguments
-parser.add_argument('--auth-header', help='Authorization header value')
-
-# In check_url():
-headers = {'User-Agent': 'WAT-Uptime-Monitor/1.0'}
-if auth_header:
-    headers['Authorization'] = auth_header
-
-response = requests.get(url, timeout=timeout, headers=headers, ...)
-```
-
-Then set a GitHub Secret for the auth token and pass it in the workflow:
-
-```yaml
-- name: Run uptime check
-  env:
-    AUTH_TOKEN: ${{ secrets.API_AUTH_TOKEN }}
-  run: |
-    python tools/check_url.py --url $MONITOR_URL --auth-header "Bearer $AUTH_TOKEN"
-```
-
-## Cost & Resource Usage
+## Cost & Performance
 
 ### GitHub Actions Minutes
+- **Check frequency:** Every 5 minutes
+- **Checks per day:** 288
+- **Checks per month:** ~8,640
+- **Minutes per check:** < 1 minute
+- **Total monthly cost:** ~1,440 GitHub Actions minutes
 
-- Each check takes ~10 seconds to run
-- At 5-minute intervals: 288 checks/day = 48 minutes/day
-- Monthly: 48 × 30 = 1,440 minutes/month
+**Free tier:**
+- Public repos: Unlimited
+- Private repos: 2,000 minutes/month (this system uses ~72% of free tier)
 
-**Free tier limits:**
-- **Public repos**: Unlimited minutes
-- **Private repos**: 2,000 minutes/month (free tier)
+### CSV File Size
+- **Bytes per row:** ~100 bytes
+- **Rows per day:** 288
+- **Growth rate:** ~30KB/day, ~10MB/year
+- **Git repo impact:** Minimal (Git handles text files efficiently)
 
-This system uses ~72% of the free tier for a single monitored URL.
+### Response Time
+- **Typical:** 100-500ms (depends on target site)
+- **Max:** Set by `TIMEOUT` parameter (default 10s)
+- **Tool overhead:** < 100ms (CSV write + git operations)
 
-### Repository Size
+---
 
-- Each check appends ~100 bytes to the CSV
-- Each commit adds ~1 KB of Git metadata
-- Monthly: 8,640 checks × 1.1 KB = ~9.5 MB/month
-- Annual: ~114 MB/year
+## Extension Ideas
 
-Git repositories handle this easily. Consider archiving or squashing commits after 1-2 years.
+### Add Alerting
+**Slack notification on downtime:**
+```yaml
+- name: Notify Slack
+  if: steps.check.outcome == 'failure'
+  run: |
+    curl -X POST ${{ secrets.SLACK_WEBHOOK }} \
+      -H 'Content-Type: application/json' \
+      -d '{"text":"🚨 Site DOWN: ${{ env.URL }}"}'
+```
 
-### API Rate Limits
+### Add Dashboard
+Generate HTML dashboard from CSV:
+```python
+# tools/generate_dashboard.py
+import pandas as pd
+import matplotlib.pyplot as plt
 
-This system makes no API calls (other than the monitored URL itself). No rate limit concerns.
+df = pd.read_csv('data/uptime_log.csv')
+# ... generate charts ...
+# Save to docs/dashboard.html
+# Commit to repo, serve via GitHub Pages
+```
+
+### Add More Metrics
+Extend CSV with:
+- DNS resolution time
+- TLS handshake time
+- First byte time (TTFB)
+- Content length
+
+---
 
 ## Maintenance
 
-### Weekly
+### Regular Tasks
+- **None required.** System is fully autonomous.
 
-- Check the Actions tab for any failed runs
-- Review recent CSV entries for anomalies
+### Periodic Tasks
+- **Quarterly:** Review CSV file size, archive if needed
+- **Annually:** Review uptime statistics, adjust alerting thresholds
 
-### Monthly
+### Version Updates
+- **Python dependencies:** `pip install --upgrade -r requirements.txt`
+- **GitHub Actions:** Actions update automatically (using `@v4`, `@v5` tags)
 
-- Review uptime percentage
-- Analyze response time trends
-- Check repository size (if it's growing unexpectedly)
+---
 
-### Quarterly
+## Success Indicators
 
-- Archive old CSV data if desired
-- Review and update `MONITOR_URL` if target site has changed
-- Update dependencies: `pip install --upgrade requests`
+✅ CSV file grows by 288 rows/day  
+✅ Workflow runs complete in < 5 seconds  
+✅ Git commits include only CSV file (no other files)  
+✅ Workflow status matches site status (green=up, red=down)  
+✅ No concurrent run conflicts  
+✅ Response times logged accurately  
+✅ Downtime events captured  
 
-### Annually
+---
 
-- Squash old commits to reduce repo size
-- Review and update this documentation
-- Consider upgrading Python version in workflow
+## Support & Documentation
 
-## Security Notes
+- **Workflow steps:** See `workflow.md` for detailed execution flow
+- **Tool source:** `tools/monitor.py` (fully commented)
+- **GitHub Actions:** `.github/workflows/monitor.yml` (annotated)
+- **CSV format:** Standard CSV with UTF-8 encoding (Excel/Sheets compatible)
 
-- **No secrets in code**: All configuration via environment variables and GitHub Secrets
-- **Minimal permissions**: Workflow uses default `GITHUB_TOKEN` with write access only to the repository
-- **No external services**: System does not send data anywhere except the monitored URL and GitHub
-- **Public data**: CSV is committed to the repository — do not monitor URLs that leak sensitive data in responses
-
-## Support & Feedback
-
-This system was generated by the WAT Systems Factory. For issues, enhancements, or questions:
-
-1. Open a GitHub Issue in this repository
-2. Use Agent HQ: mention `@claude` in an issue with your question
-3. Refer to `workflow.md` for detailed process documentation
-4. Check GitHub Actions logs for execution details
+**Questions or issues?** Check GitHub Actions logs for detailed execution traces. Every run is fully logged.
