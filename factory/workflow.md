@@ -353,6 +353,47 @@ Verify tools work together as a pipeline and the system is complete.
 
 ---
 
+## Step 8c: Smoke Tests (Level 4 Validation)
+
+Run post-build smoke tests on the generated tools. This is a 4th validation level that attempts to actually execute each tool with sample input.
+
+1. Run `factory/tools/smoke_test.py --system-dir systems/{system_name}`
+2. For each tool in `tools/`:
+   - **Check for `# SMOKE_TEST: {"key": "value"}` comment** — if present, use it as sample input
+   - **Skip tools requiring external API keys** — detected by scanning for `os.environ[...]` patterns referencing API_KEY, SECRET, TOKEN, etc., or imports of known API client libraries (openai, anthropic, boto3, etc.)
+   - **Attempt import** — verify the module loads without errors
+   - **Run `main()` with sample input** — inject smoke test data as CLI args, enforce 30-second timeout
+   - **Record result**: passed, failed, or skipped (with reason)
+3. Log the full smoke test report: total tools, passed, failed, skipped
+4. **If any tool fails**: Log the failure details but do NOT halt the build — smoke test failures are warnings, not blockers (tools may need live APIs or data that isn't available during build)
+
+**Gate**: Smoke test results are informational. They are included in the job summary but do not block packaging.
+
+**Sample input convention**: Add this comment to any tool file to enable smoke testing:
+```python
+# SMOKE_TEST: {"input": "sample_value", "format": "json"}
+```
+
+**Failure mode**: If the smoke test infrastructure itself fails (e.g., import error in smoke_test.py), skip smoke tests entirely and proceed to packaging. Log the error for debugging.
+
+---
+
+## Step 8b: Version Existing System
+
+Before overwriting an existing system, archive the current version.
+
+1. Check if `systems/{system_name}/` already exists
+2. **If it exists**: Run `factory/tools/version_system.py --system-name {system_name} --job-id {job_id} --confidence {confidence}`
+   - This copies all current files (excluding `versions/`) into `systems/{system_name}/versions/vN/`
+   - Writes `metadata.json` with version number, date, job ID, and confidence score
+   - The version number is auto-incremented from existing versions
+3. **If it does not exist**: Skip — this is a first build, no versioning needed
+4. Log the versioning result (version number or "skipped")
+
+**Failure mode**: If versioning fails, log the error but do NOT halt the build. The new system should still be generated — losing the old version is preferable to blocking the build entirely.
+
+---
+
 ## Step 9: Package
 
 Bundle everything into a deployable system.

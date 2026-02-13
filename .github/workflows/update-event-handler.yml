@@ -118,9 +118,10 @@ jobs:
               }
             }' > /tmp/payload.json
 
-          # 7. Send to event handler
+          # 7. Send to event handler with HMAC signature
+          SIGNATURE=$(openssl dgst -sha256 -hmac "${{ secrets.GH_WEBHOOK_SECRET }}" /tmp/payload.json | awk '{print $2}')
           curl -s -X POST "${{ vars.GH_WEBHOOK_URL }}/github/webhook" \
             -H "Content-Type: application/json" \
             -H "X-GitHub-Event: pull_request" \
-            -H "X-GitHub-Webhook-Secret-Token: ${{ secrets.GH_WEBHOOK_SECRET }}" \
+            -H "X-GitHub-Webhook-Secret-Token: sha256=$SIGNATURE" \
             -d @/tmp/payload.json
