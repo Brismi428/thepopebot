@@ -1,0 +1,1 @@
+This is a simple test job. Create a file called test-notification.md in the tmp/ directory with the text: Notification test successful.
