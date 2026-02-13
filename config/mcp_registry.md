@@ -310,23 +310,38 @@ The factory is never limited to the MCPs listed here. This registry helps with t
 - **Tool Pattern**:
   ```python
   import os, requests
-  
+  from urllib.parse import quote
+
   NCA_URL = "https://media.wat-factory.cloud"
+  R2_PUBLIC = "https://pub-b692c36a8374480593a007a38bc7116c.r2.dev"
   headers = {"x-api-key": os.environ["NCA_API_KEY"], "Content-Type": "application/json"}
-  
-  # Transcribe a video
+
+  # === YouTube Transcription (two-step process) ===
+  # Step 1: Download the video (uses yt-dlp, stores on R2)
+  dl = requests.post(f"{NCA_URL}/v1/BETA/media/download", headers=headers, json={
+      "media_url": "https://youtube.com/watch?v=VIDEO_ID"
+  }).json()
+
+  # Step 2: Get the filename from the response and build the PUBLIC R2 URL
+  # IMPORTANT: The storage URL returned uses the private R2 endpoint which is not accessible.
+  # You MUST use the public R2 dev URL instead.
+  # IMPORTANT: Filenames often contain spaces, parentheses, and unicode characters.
+  # You MUST URL-encode the filename.
+  filename = dl["response"]["media"]["media_url"].split("/nca-media/")[-1]
+  public_url = f"{R2_PUBLIC}/{filename}"  # filename is already URL-encoded from the response
+
+  # Step 3: Transcribe using the public URL
+  transcript = requests.post(f"{NCA_URL}/v1/media/transcribe", headers=headers, json={
+      "media_url": public_url
+  }).json()
+  text = transcript["response"]["text"]
+
+  # === Direct media transcription (non-YouTube, publicly accessible URL) ===
   resp = requests.post(f"{NCA_URL}/v1/media/transcribe", headers=headers, json={
-      "url": "https://example.com/video.mp4",
-      "output": "text"  # or "srt", "vtt"
+      "media_url": "https://example.com/audio.mp3"
   })
-  
-  # Download media (YouTube, etc.)
-  resp = requests.post(f"{NCA_URL}/v1/BETA/media/download", headers=headers, json={
-      "url": "https://youtube.com/watch?v=VIDEO_ID",
-      "quality": "best"
-  })
-  
-  # Screenshot a webpage
+
+  # === Screenshot a webpage ===
   resp = requests.post(f"{NCA_URL}/v1/image/screenshot/webpage", headers=headers, json={
       "url": "https://example.com",
       "width": 1920,
@@ -335,4 +350,9 @@ The factory is never limited to the MCPs listed here. This registry helps with t
   ```
 - **Secret**: `NCA_API_KEY`
 - **Fallback**: Direct FFmpeg via subprocess (limited — no transcription, no cloud upload)
-- **Notes**: Supports async processing with `webhook_url` parameter for long-running jobs. All media URLs must be publicly accessible. Results include `run_time`, `queue_time`, and `total_time` metrics.
+- **CRITICAL NOTES**:
+  - The `/v1/media/transcribe` endpoint does NOT support YouTube URLs directly. You MUST first download via `/v1/BETA/media/download`, then transcribe the downloaded file.
+  - The `media_url` returned by the download endpoint uses the private R2 storage URL (`fa8408d96e71300f9e63b83ad7177384.r2.cloudflarestorage.com`). This URL is NOT publicly accessible. Replace the domain with the public R2 URL: `pub-b692c36a8374480593a007a38bc7116c.r2.dev`
+  - All field names use `media_url` (not `url`), except for screenshot which uses `url`.
+  - Transcription runs Whisper on CPU. A 20-minute video takes ~3-4 minutes. Set request timeouts accordingly (at least 600 seconds).
+  - Supports async processing with `webhook_url` parameter for long-running jobs.
