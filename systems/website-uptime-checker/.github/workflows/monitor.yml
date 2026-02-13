@@ -1,0 +1,86 @@
+name: Website Uptime Monitor
+
+on:
+  schedule:
+    # Run every 5 minutes
+    # Note: GitHub Actions cron has ±5 minute variance
+    - cron: '*/5 * * * *'
+  
+  workflow_dispatch:
+    # Manual trigger for testing
+    inputs:
+      urls:
+        description: 'URLs to check (space-separated, optional override)'
+        required: false
+        default: ''
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    
+    # Prevent concurrent runs
+    concurrency:
+      group: uptime-monitor
+      cancel-in-progress: false
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      
+      - name: Check websites
+        id: check
+        continue-on-error: true  # Don't fail workflow if sites are down
+        run: |
+          # Use manual input URLs if provided, otherwise use defaults
+          URLS="${{ github.event.inputs.urls }}"
+          if [ -z "$URLS" ]; then
+            URLS="https://google.com https://github.com"
+          fi
+          
+          python tools/monitor.py \
+            --urls $URLS \
+            --timeout 30 > /tmp/results.json
+          
+          echo "Check completed with exit code: $?"
+      
+      - name: Log results to CSV
+        run: |
+          python tools/log_results.py \
+            --results /tmp/results.json \
+            --log-file logs/uptime_log.csv
+      
+      - name: Send Telegram alerts
+        if: steps.check.outcome == 'failure'
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          python tools/telegram_alert.py --results /tmp/results.json || true
+          # || true ensures alert failures don't fail the workflow
+      
+      - name: Commit results
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # Stage ONLY the CSV log file (never git add -A)
+          git add logs/uptime_log.csv
+          
+          # Commit with timestamp
+          TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          git commit -m "chore(uptime): log check results $TIMESTAMP" || echo "No changes to commit"
+          
+          # Pull with rebase to handle rare concurrent commits
+          git pull --rebase origin main || true
+          
+          # Push to repository
+          git push
