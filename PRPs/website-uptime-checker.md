@@ -63,7 +63,7 @@ A monitoring system that performs HTTP GET requests to configured URLs every 5 m
   source: "GitHub Secret TELEGRAM_BOT_TOKEN"
   required: false
   description: "Telegram bot token for sending alerts (optional)"
-  example: "110201543:AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw"
+  example: "<your-bot-token-from-botfather>"
 ```
 
 ## Outputs
