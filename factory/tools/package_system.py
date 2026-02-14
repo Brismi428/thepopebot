@@ -46,11 +46,67 @@ REQUIRED_DIRS = [
 ]
 
 
-def generate_readme(system_name: str, description: str, secrets: list[str]) -> str:
+def has_frontend(source: Path) -> bool:
+    """Check if the system has a generated front-end."""
+    return (source / "frontend").is_dir() and (source / "api").is_dir()
+
+
+def generate_readme(system_name: str, description: str, secrets: list[str], with_frontend: bool = False) -> str:
     """Generate a README.md for the packaged system."""
     secrets_table = "\n".join(
         f"| `{s}` | Required |" for s in secrets
     ) if secrets else "| (none beyond ANTHROPIC_API_KEY) | |"
+
+    frontend_section = ""
+    frontend_structure = ""
+    if with_frontend:
+        frontend_section = f"""
+### Option D: Interactive Front-End (Web UI)
+
+```bash
+# Install Python dependencies
+pip install -r requirements.txt -r api/requirements.txt
+
+# Start the API server
+uvicorn api.main:app --reload --port 8000
+
+# In another terminal, start the frontend dev server
+cd frontend
+npm install
+npm run dev
+```
+
+Then open http://localhost:3000 in your browser.
+
+#### Docker Deployment
+
+```bash
+docker compose -f docker-compose.frontend.yml up --build
+```
+
+The app will be available at http://localhost:8000 (API + frontend served together).
+
+### API Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/health` | Health check |
+| POST | `/api/run-pipeline` | Run the full tool pipeline |
+| POST | `/api/{{tool-name}}` | Run individual tools |
+"""
+        frontend_structure = """├── api/               # FastAPI bridge (wraps tools as HTTP endpoints)
+│   ├── main.py
+│   ├── models/
+│   ├── requirements.txt
+│   └── Dockerfile
+├── frontend/          # Next.js web interface
+│   ├── src/
+│   ├── package.json
+│   └── next.config.js
+├── docker-compose.frontend.yml  # Docker deployment
+├── system_interface.json        # Tool schemas (source of truth for frontend)
+├── frontend_design.json         # UI design configuration
+"""
 
     return f"""# {system_name}
 
@@ -100,7 +156,7 @@ curl -X POST \\
 2. Assign the issue to `@claude`
 3. The agent will process the request and open a draft PR with results
 4. Leave comments mentioning `@claude` for iterations
-
+{frontend_section}
 ## Required Secrets
 
 | Secret | Status |
@@ -118,7 +174,7 @@ curl -X POST \\
 ├── .claude/agents/    # Specialist subagent definitions
 ├── .github/workflows/ # GitHub Actions for automated execution
 ├── requirements.txt   # Python dependencies
-├── output/            # Execution results (auto-generated)
+{frontend_structure}├── output/            # Execution results (auto-generated)
 └── README.md          # This file
 ```
 
@@ -193,7 +249,7 @@ def main() -> dict[str, Any]:
 
         # Generate README
         secrets = [s.strip() for s in args.secrets.split(",") if s.strip()]
-        readme = generate_readme(args.system_name, args.description, secrets)
+        readme = generate_readme(args.system_name, args.description, secrets, with_frontend=has_frontend(source))
         with open(output / "README.md", "w", encoding="utf-8") as f:
             f.write(readme)
         logger.info("README.md generated")

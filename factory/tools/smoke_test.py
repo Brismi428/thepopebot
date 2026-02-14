@@ -162,6 +162,67 @@ def run_smoke_test(filepath: str) -> dict:
     return result
 
 
+def smoke_test_api_bridge(api_main_path: str, system_dir: str) -> dict:
+    """
+    Smoke test the FastAPI API bridge.
+
+    Verifies:
+    - api/main.py imports successfully
+    - FastAPI app object exists
+    - Expected routes are registered (/api/health, /api/run-pipeline)
+    """
+    result = {"tool": "api/main.py (FastAPI bridge)", "status": "skipped", "message": ""}
+
+    try:
+        # Add paths for import resolution
+        original_path = sys.path.copy()
+        api_dir = os.path.dirname(api_main_path)
+        sys.path.insert(0, api_dir)
+        sys.path.insert(0, system_dir)
+
+        spec = importlib.util.spec_from_file_location("api_main_smoke", api_main_path)
+        if spec is None or spec.loader is None:
+            result["status"] = "failed"
+            result["message"] = "Could not create module spec for api/main.py"
+            return result
+
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        if not hasattr(module, "app"):
+            result["status"] = "failed"
+            result["message"] = "No 'app' object found in api/main.py"
+            return result
+
+        app = module.app
+        route_paths = []
+        if hasattr(app, "routes"):
+            for route in app.routes:
+                if hasattr(route, "path"):
+                    route_paths.append(route.path)
+
+        missing = []
+        if "/api/health" not in route_paths:
+            missing.append("/api/health")
+        if "/api/run-pipeline" not in route_paths:
+            missing.append("/api/run-pipeline")
+
+        if missing:
+            result["status"] = "failed"
+            result["message"] = f"Missing routes: {', '.join(missing)}. Found: {', '.join(route_paths)}"
+        else:
+            result["status"] = "passed"
+            result["message"] = f"FastAPI app OK — {len(route_paths)} routes: {', '.join(route_paths)}"
+
+    except Exception as e:
+        result["status"] = "failed"
+        result["message"] = f"API bridge smoke test failed: {e}"
+    finally:
+        sys.path = original_path
+
+    return result
+
+
 def main():
     parser = argparse.ArgumentParser(description="Run smoke tests on a WAT system")
     parser.add_argument("--system-dir", required=True, help="Path to the system directory")
@@ -184,6 +245,12 @@ def main():
     for filepath in tool_files:
         result = run_smoke_test(filepath)
         results.append(result)
+
+    # Check FastAPI API bridge if it exists
+    api_main = os.path.join(args.system_dir, "api", "main.py")
+    if os.path.isfile(api_main):
+        api_result = smoke_test_api_bridge(api_main, args.system_dir)
+        results.append(api_result)
 
     passed = sum(1 for r in results if r["status"] == "passed")
     failed = sum(1 for r in results if r["status"] == "failed")

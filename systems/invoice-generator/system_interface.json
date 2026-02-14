@@ -1,0 +1,385 @@
+{
+  "schema_version": "1.0",
+  "system_dir": "/home/deploy/thepopebot/systems/invoice-generator",
+  "system": {
+    "system_name": "Invoice Generator WAT System",
+    "description": "- **No API calls** (all local processing)\n- **No secrets required** (for basic operation)\n- **Sequential execution** (clear, predictable flow)\n- **Atomic operations** (file locking prevents race conditions)\n- **Graceful degradation** (continues with degraded output rather than crashing)\n- **Full audit trail** (every invoice logged)",
+    "inputs_section": "### Primary Input: Invoice Data (JSON)\n\nThe system accepts invoice data in JSON format from three sources:",
+    "outputs_section": "### Primary Output: Invoice PDF\n\n**Location:** `output/{client-slug}-{YYYY-MM-DD}-{invoice-number}.pdf`\n\n**Example:** `output/acme-corporation-2026-02-11-INV-1043.pdf`\n\nThe PDF includes:\n- Company branding (logo if available, name, address, contact info)\n- Invoice metadata (number, dates)\n- Client information (bill to)\n- Project description\n- Itemized line items table (description, quantity, rate, amount)\n- Subtotal, tax, total calculations\n- Payment terms and methods\n- Notes (if provided)"
+  },
+  "tools": [
+    {
+      "name": "generate_invoice_pdf",
+      "file": "generate_invoice_pdf.py",
+      "docstring": "Generate professional PDF invoice with ReportLab.\n\nCreates a formatted invoice PDF with company branding, itemized line items\ntable, tax calculations, and payment instructions.\n\nInputs:\n    - --invoice-data: Path to validated invoice JSON\n    - --invoice-number: Formatted invoice number\n    - --config: Path to config JSON\n    - --output: Path for output PDF (or stdout if omitted)\n\nOutputs:\n    - PDF bytes to stdout or file\n\nExit Codes:\n    0: Success\n    1: Error during PDF generation",
+      "arguments": [
+        {
+          "name": "invoice_data",
+          "cli_flag": "--invoice-data",
+          "positional": false,
+          "required": true,
+          "help": "Path to validated invoice JSON",
+          "type": "str"
+        },
+        {
+          "name": "invoice_number",
+          "cli_flag": "--invoice-number",
+          "positional": false,
+          "required": true,
+          "help": "Formatted invoice number",
+          "type": "str"
+        },
+        {
+          "name": "config",
+          "cli_flag": "--config",
+          "positional": false,
+          "required": true,
+          "help": "Path to config JSON",
+          "type": "str"
+        },
+        {
+          "name": "output",
+          "cli_flag": "--output",
+          "positional": false,
+          "help": "Path for output PDF (omit for stdout)",
+          "required": false,
+          "type": "str"
+        }
+      ],
+      "env_vars": [],
+      "output": {
+        "formats": [
+          "pdf",
+          "stdout"
+        ]
+      },
+      "imports": [
+        "PIL",
+        "argparse",
+        "datetime",
+        "decimal",
+        "io",
+        "json",
+        "logging",
+        "pathlib",
+        "reportlab",
+        "sys",
+        "traceback"
+      ],
+      "import_safety": {
+        "safe": false,
+        "issues": [
+          "sys.exit() called at module level (line 38)",
+          "Module calls sys.exit(1) during import"
+        ]
+      }
+    },
+    {
+      "name": "load_config",
+      "file": "load_config.py",
+      "docstring": "Load company branding and tax configuration with sensible defaults.\n\nReads configuration from JSON file, providing default values for any\nmissing fields to ensure the system works even without a complete config.\n\nInputs:\n    - config_path: str -- Path to config JSON file\n\nOutputs:\n    - JSON dict with config (uses defaults for missing fields) to stdout\n\nExit Codes:\n    0: Always succeeds (uses defaults on error)",
+      "arguments": [
+        {
+          "name": "config_path",
+          "cli_flag": "config_path",
+          "positional": true,
+          "help": "Path to config JSON file",
+          "required": true,
+          "type": "str"
+        }
+      ],
+      "env_vars": [],
+      "output": {
+        "formats": [
+          "json",
+          "stdout"
+        ]
+      },
+      "imports": [
+        "argparse",
+        "json",
+        "logging",
+        "pathlib",
+        "sys"
+      ],
+      "import_safety": {
+        "safe": true,
+        "issues": []
+      }
+    },
+    {
+      "name": "manage_counter",
+      "file": "manage_counter.py",
+      "docstring": "Atomically increment invoice counter with file locking.\n\nManages sequential invoice numbering using a JSON state file with\nfile locking to prevent race conditions in concurrent executions.\n\nInputs:\n    - counter_path: str -- Path to counter JSON file\n    - action: str -- 'get_next' or 'get_current'\n\nOutputs:\n    - JSON with {'invoice_number': 'INV-1043', 'numeric': 1043} to stdout\n\nExit Codes:\n    0: Success\n    1: Lock timeout or other error",
+      "arguments": [
+        {
+          "name": "counter_path",
+          "cli_flag": "counter_path",
+          "positional": true,
+          "help": "Path to counter JSON file",
+          "required": true,
+          "type": "str"
+        },
+        {
+          "name": "action",
+          "cli_flag": "action",
+          "positional": true,
+          "choices": [
+            "get_next",
+            "get_current"
+          ],
+          "default": "get_next",
+          "nargs": "?",
+          "help": "Action to perform (default: get_next)",
+          "required": false,
+          "type": "str"
+        }
+      ],
+      "env_vars": [],
+      "output": {
+        "formats": [
+          "json",
+          "stdout"
+        ]
+      },
+      "imports": [
+        "argparse",
+        "datetime",
+        "filelock",
+        "json",
+        "logging",
+        "pathlib",
+        "sys",
+        "time"
+      ],
+      "import_safety": {
+        "safe": false,
+        "issues": [
+          "sys.exit() called at module level (line 31)",
+          "Module calls sys.exit(1) during import"
+        ]
+      }
+    },
+    {
+      "name": "parse_invoice_input",
+      "file": "parse_invoice_input.py",
+      "docstring": "Parse and validate invoice JSON input with business rule checks.\n\nValidates required fields, data types, and business constraints before\ninvoice generation. Normalizes client name for filename generation.\n\nInputs:\n    - input_path: str -- Path to JSON file or '-' for stdin\n\nOutputs:\n    - JSON dict with validated, normalized invoice data to stdout\n\nExit Codes:\n    0: Success\n    1: Validation error or malformed input",
+      "arguments": [
+        {
+          "name": "input_path",
+          "cli_flag": "input_path",
+          "positional": true,
+          "help": "Path to JSON file or '-' for stdin",
+          "required": true,
+          "type": "str"
+        }
+      ],
+      "env_vars": [],
+      "output": {
+        "formats": [
+          "json",
+          "stdout"
+        ]
+      },
+      "imports": [
+        "argparse",
+        "datetime",
+        "dateutil",
+        "decimal",
+        "json",
+        "jsonschema",
+        "logging",
+        "pathlib",
+        "slugify",
+        "sys"
+      ],
+      "import_safety": {
+        "safe": false,
+        "issues": [
+          "sys.exit() called at module level (line 31)",
+          "sys.exit() called at module level (line 37)",
+          "sys.exit() called at module level (line 43)",
+          "Module calls sys.exit(1) during import"
+        ]
+      }
+    },
+    {
+      "name": "save_invoice",
+      "file": "save_invoice.py",
+      "docstring": "Save PDF to output directory with standardized filename and append audit log.\n\nHandles file output with directory creation and audit logging.\n\nInputs:\n    - --pdf-path: Path to source PDF file\n    - --client-name: Client name for filename\n    - --invoice-date: Invoice date (YYYY-MM-DD)\n    - --invoice-number: Invoice number\n    - --total: Total amount\n\nOutputs:\n    - JSON with {'pdf_path': 'output/...'} to stdout\n\nExit Codes:\n    0: Success\n    1: Error during save",
+      "arguments": [
+        {
+          "name": "pdf_path",
+          "cli_flag": "--pdf-path",
+          "positional": false,
+          "required": true,
+          "help": "Path to source PDF file",
+          "type": "str"
+        },
+        {
+          "name": "client_name",
+          "cli_flag": "--client-name",
+          "positional": false,
+          "required": true,
+          "help": "Client name for filename",
+          "type": "str"
+        },
+        {
+          "name": "invoice_date",
+          "cli_flag": "--invoice-date",
+          "positional": false,
+          "required": true,
+          "help": "Invoice date (YYYY-MM-DD)",
+          "type": "str"
+        },
+        {
+          "name": "invoice_number",
+          "cli_flag": "--invoice-number",
+          "positional": false,
+          "required": true,
+          "help": "Invoice number",
+          "type": "str"
+        },
+        {
+          "name": "total",
+          "cli_flag": "--total",
+          "positional": false,
+          "required": true,
+          "help": "Total invoice amount",
+          "type": "str"
+        }
+      ],
+      "env_vars": [],
+      "output": {
+        "formats": [
+          "json",
+          "pdf",
+          "stdout"
+        ]
+      },
+      "imports": [
+        "argparse",
+        "datetime",
+        "decimal",
+        "json",
+        "logging",
+        "pathlib",
+        "slugify",
+        "sys",
+        "traceback"
+      ],
+      "import_safety": {
+        "safe": false,
+        "issues": [
+          "sys.exit() called at module level (line 33)",
+          "Module calls sys.exit(1) during import"
+        ]
+      }
+    }
+  ],
+  "workflow": {
+    "steps": [
+      {
+        "step_id": "1",
+        "title": "Parse and Validate Input",
+        "tools_referenced": [
+          "parse_invoice_input"
+        ],
+        "inputs": [],
+        "outputs": [],
+        "description": "**Delegate to:** invoice-parser-specialist\n\nRead JSON invoice data from the input source, validate all required fields and business rules, normalize client name for filename generation.\n\n### Actions\n\n1. Load invoice JSON from input file path or stdin\n2. Validate against JSON schema:\n   - Required fields: client_name, project_description, invoice_date, due_date, line_items\n   - Line items must have: description, quantity > 0, rate >= 0\n3. Parse dates and validate business rule: due_date >= invoice_date\n4. Slugify client_name for safe filename generation\n5. Return validated invoice data with client_slug field\n\n### Tool\n\n```bash\npython tools/parse_invoice_input.py <input_path>\n```\n\n### Success Criteria\n\n- JSON parses correctly\n- All required fields present\n- Date formats valid (ISO 8601 or parseable)\n- due_date >= invoice_date\n- All quantities > 0\n- All rates >= 0\n- client_slug generated successfully\n\n### Failure Mode\n\n**Missing required field or validation error**\n\n- Log specific validation failure with field name and error message\n- Exit with code 1 and clear error message\n- DO NOT proceed to invoice generation with incomplete data\n\n**Fallback:** None -- validation must pass for the system to continue\n\n---"
+      },
+      {
+        "step_id": "2",
+        "title": "Load Configuration",
+        "tools_referenced": [
+          "load_config"
+        ],
+        "inputs": [],
+        "outputs": [],
+        "description": "**Delegate to:** Main agent (simple file read)\n\nRead company branding and tax settings from config/invoice_config.json. Use sensible defaults for any missing fields.\n\n### Actions\n\n1. Load config/invoice_config.json\n2. Merge with default config for any missing fields:\n   - company_name: \"Your Company LLC\"\n   - tax_rate: 0.0\n   - currency: \"USD\"\n   - currency_symbol: \"$\"\n3. Return complete config dict\n\n### Tool\n\n```bash\npython tools/load_config.py config/invoice_config.json\n```\n\n### Success Criteria\n\n- Config loaded (or defaults used)\n- All required config fields present after merge\n\n### Failure Mode\n\n**Missing or malformed config file**\n\n- Log warning but continue with defaults\n- DO NOT fail invoice generation due to config issues\n\n**Fallback:** Use DEFAULT_CONFIG from load_config.py\n\n---"
+      },
+      {
+        "step_id": "3",
+        "title": "Get Next Invoice Number",
+        "tools_referenced": [
+          "manage_counter"
+        ],
+        "inputs": [],
+        "outputs": [],
+        "description": "**Delegate to:** counter-manager-specialist\n\nAtomically increment the invoice counter and return the next formatted invoice number.\n\n### Actions\n\n1. Acquire file lock on state/invoice_counter.json\n2. Read current counter value (or initialize to 1000 if missing)\n3. Increment counter\n4. Write updated counter to file\n5. Release lock\n6. Format invoice number: {prefix}{number:0{padding}d}\n7. Return invoice_number and numeric value\n\n### Tool\n\n```bash\npython tools/manage_counter.py state/invoice_counter.json get_next\n```\n\n### Success Criteria\n\n- Lock acquired within 5 seconds\n- Counter incremented\n- File written successfully\n- Formatted invoice number returned (e.g., \"INV-1043\")\n\n### Failure Mode\n\n**File lock timeout after 5 seconds**\n\n- Log warning about lock failure\n- Use timestamp-based fallback: \"INV-{unix_timestamp}\"\n- Continue with fallback number (degraded but functional)\n\n**File lock timeout indicates:** Concurrent invoice generation or filesystem issue\n\n**Fallback:** Timestamp-based invoice number (ensures uniqueness but breaks sequential numbering)\n\n**File missing or corrupted**\n\n- Initialize counter to 1000\n- Log warning but continue\n\n---"
+      },
+      {
+        "step_id": "4",
+        "title": "Generate PDF Invoice",
+        "tools_referenced": [
+          "generate_invoice_pdf"
+        ],
+        "inputs": [],
+        "outputs": [],
+        "description": "**Delegate to:** pdf-generator-specialist\n\nCreate a professional PDF invoice using ReportLab with company branding, itemized line items table, tax calculations, and payment instructions.\n\n### Actions\n\n1. Load validated invoice data from Step 1\n2. Load config from Step 2\n3. Receive invoice number from Step 3\n4. Render PDF with:\n   - Company branding (logo if available, name, address, contact)\n   - Invoice metadata (number, dates, client info)\n   - Project description\n   - Itemized line items table (description, quantity, rate, amount)\n   - Subtotal calculation (sum of all line items)\n   - Tax calculation (subtotal \u00d7 tax_rate)\n   - Total (subtotal + tax)\n   - Payment terms and methods\n   - Notes (if present)\n5. Return PDF bytes\n\n### Tool\n\n```bash\npython tools/generate_invoice_pdf.py \\\n  --invoice-data <validated_data_path> \\\n  --invoice-number <invoice_number> \\\n  --config <config_path> \\\n  --output <temp_pdf_path>\n```\n\n### Success Criteria\n\n- PDF file created\n- File size > 5KB (sanity check)\n- All required sections rendered\n\n### Failure Mode\n\n**Missing company logo file**\n\n- Log warning\n- Skip logo rendering\n- Continue with text-only branding\n\n**ReportLab rendering error**\n\n- Log full error and traceback\n- Exit with code 1\n- DO NOT create empty or corrupted PDF\n\n**Font loading failure**\n\n- Fall back to built-in Helvetica font\n- Log warning but continue\n\n**Fallback:** Skip logo and use built-in fonts for degraded output\n\n---"
+      },
+      {
+        "step_id": "5",
+        "title": "Save Invoice and Update Logs",
+        "tools_referenced": [
+          "save_invoice"
+        ],
+        "inputs": [],
+        "outputs": [],
+        "description": "**Delegate to:** output-handler-specialist\n\nWrite the PDF to the output directory with a standardized filename and append an audit log entry.\n\n### Actions\n\n1. Read PDF bytes from Step 4\n2. Generate filename: {client-slug}-{invoice_date}-{invoice_number}.pdf\n3. Create output/ directory if it doesn't exist\n4. Write PDF to output/{filename}\n5. Append audit log entry to logs/invoice_log.jsonl:\n   - timestamp (ISO 8601 UTC)\n   - invoice_number\n   - client (name)\n   - total (amount)\n   - pdf_path (relative)\n6. Return final PDF path\n\n### Tool\n\n```bash\npython tools/save_invoice.py \\\n  --pdf-path <temp_pdf_path> \\\n  --client-name \"<client_name>\" \\\n  --invoice-date <YYYY-MM-DD> \\\n  --invoice-number <invoice_number> \\\n  --total <total_amount>\n```\n\n### Success Criteria\n\n- PDF written to output/\n- Filename follows convention\n- Audit log entry appended\n\n### Failure Mode\n\n**Output directory creation fails**\n\n- Log error with filesystem details\n- Attempt to save to /tmp/ as fallback\n- Continue if fallback succeeds\n\n**Disk full or permissions error**\n\n- Log error\n- Exit with code 1\n- Invoice counter HAS been incremented (will skip this number)\n\n**Audit log write fails**\n\n- Log warning\n- Continue (audit log is best-effort)\n- Invoice is still saved successfully\n\n**Fallback:** Save to /tmp/ if output/ write fails; skip audit log if logging fails\n\n---\n\n## Execution Summary\n\nThe workflow executes sequentially (no parallelization):\n\n1. **Parse & Validate** \u2192 validated invoice data\n2. **Load Config** \u2192 config dict\n3. **Get Invoice Number** \u2192 \"INV-1043\"\n4. **Generate PDF** \u2192 PDF bytes\n5. **Save & Log** \u2192 output/client-slug-2026-02-11-INV-1043.pdf\n\nEach step depends on the previous step's output, making sequential execution the correct approach.\n\n**Total execution time:** 2-5 seconds (dominated by PDF generation)\n\n---\n\n## Error Handling Philosophy\n\n- **Validation errors:** Fail fast with clear messages (Step 1)\n- **Config errors:** Use defaults, continue (Step 2)\n- **Counter errors:** Use timestamp fallback, continue (Step 3)\n- **PDF errors:** Degrade gracefully (skip logo), or fail if critical (Step 4)\n- **Save errors:** Try fallback location, skip audit if needed (Step 5)\n\n**Never generate an invoice with invalid data.** Better to fail with an error than produce an incorrect invoice."
+      }
+    ]
+  },
+  "sample_inputs": [
+    {
+      "filename": "example.json",
+      "format": "json",
+      "data": {
+        "client_name": "Acme Corporation",
+        "client_address": "123 Business St, Suite 100, San Francisco, CA 94105",
+        "client_email": "billing@acmecorp.com",
+        "project_description": "Q1 2026 Website Redesign and Development",
+        "invoice_date": "2026-02-11",
+        "due_date": "2026-03-13",
+        "line_items": [
+          {
+            "description": "UI/UX Design (40 hours)",
+            "quantity": 40,
+            "rate": 150.0
+          },
+          {
+            "description": "Frontend Development (80 hours)",
+            "quantity": 80,
+            "rate": 175.0
+          },
+          {
+            "description": "Backend Integration (20 hours)",
+            "quantity": 20,
+            "rate": 200.0
+          }
+        ],
+        "payment_terms": "Net 30. Payment due within 30 days of invoice date.",
+        "payment_methods": [
+          "Wire Transfer: Bank of America, Routing 123456789, Account 987654321",
+          "Check: Payable to 'Your Company LLC', Mail to 456 Vendor Ave, Austin, TX 78701",
+          "PayPal: payments@yourcompany.com"
+        ],
+        "notes": "Thank you for your business. Please include invoice number with payment."
+      }
+    }
+  ],
+  "pipeline_order": [
+    "parse_invoice_input",
+    "load_config",
+    "manage_counter",
+    "generate_invoice_pdf",
+    "save_invoice"
+  ],
+  "import_safety_warnings": [
+    "generate_invoice_pdf",
+    "manage_counter",
+    "parse_invoice_input",
+    "save_invoice"
+  ]
+}

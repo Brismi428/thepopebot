@@ -1,0 +1,349 @@
+{
+  "overall": "passed",
+  "levels_run": 4,
+  "results": [
+    {
+      "level": 1,
+      "name": "Syntax",
+      "checks": [
+        {
+          "passed": true,
+          "message": "Python syntax OK",
+          "file": "api/main.py"
+        },
+        {
+          "passed": true,
+          "message": "Python syntax OK",
+          "file": "api/models/__init__.py"
+        },
+        {
+          "passed": true,
+          "message": "Python syntax OK",
+          "file": "api/models/generate_invoice_pdf.py"
+        },
+        {
+          "passed": true,
+          "message": "Python syntax OK",
+          "file": "api/models/load_config.py"
+        },
+        {
+          "passed": true,
+          "message": "Python syntax OK",
+          "file": "api/models/manage_counter.py"
+        },
+        {
+          "passed": true,
+          "message": "Python syntax OK",
+          "file": "api/models/parse_invoice_input.py"
+        },
+        {
+          "passed": true,
+          "message": "Python syntax OK",
+          "file": "api/models/save_invoice.py"
+        },
+        {
+          "passed": true,
+          "message": "TypeScript/JavaScript syntax OK",
+          "file": "frontend/src/lib/api.ts"
+        },
+        {
+          "passed": true,
+          "message": "TypeScript/JavaScript syntax OK",
+          "file": "frontend/src/app/(dashboard)/dashboard/page.tsx"
+        },
+        {
+          "passed": true,
+          "message": "TypeScript/JavaScript syntax OK",
+          "file": "frontend/src/app/(dashboard)/generate-invoice-pdf/page.tsx"
+        },
+        {
+          "passed": true,
+          "message": "TypeScript/JavaScript syntax OK",
+          "file": "frontend/src/app/(dashboard)/layout.tsx"
+        },
+        {
+          "passed": true,
+          "message": "TypeScript/JavaScript syntax OK",
+          "file": "frontend/src/app/(dashboard)/load-config/page.tsx"
+        },
+        {
+          "passed": true,
+          "message": "TypeScript/JavaScript syntax OK",
+          "file": "frontend/src/app/(dashboard)/manage-counter/page.tsx"
+        },
+        {
+          "passed": true,
+          "message": "TypeScript/JavaScript syntax OK",
+          "file": "frontend/src/app/(dashboard)/parse-invoice-input/page.tsx"
+        },
+        {
+          "passed": true,
+          "message": "TypeScript/JavaScript syntax OK",
+          "file": "frontend/src/app/(dashboard)/pipeline/page.tsx"
+        },
+        {
+          "passed": true,
+          "message": "TypeScript/JavaScript syntax OK",
+          "file": "frontend/src/app/(dashboard)/save-invoice/page.tsx"
+        },
+        {
+          "passed": true,
+          "message": "TypeScript/JavaScript syntax OK",
+          "file": "frontend/src/app/(marketing)/layout.tsx"
+        },
+        {
+          "passed": true,
+          "message": "TypeScript/JavaScript syntax OK",
+          "file": "frontend/src/app/(marketing)/page.tsx"
+        },
+        {
+          "passed": true,
+          "message": "TypeScript/JavaScript syntax OK",
+          "file": "frontend/src/app/layout.tsx"
+        },
+        {
+          "passed": true,
+          "message": "TypeScript/JavaScript syntax OK",
+          "file": "frontend/src/components/PipelineWizard.tsx"
+        },
+        {
+          "passed": true,
+          "message": "TypeScript/JavaScript syntax OK",
+          "file": "frontend/src/components/ResultViewer.tsx"
+        },
+        {
+          "passed": true,
+          "message": "TypeScript/JavaScript syntax OK",
+          "file": "frontend/src/components/ToolForm.tsx"
+        },
+        {
+          "passed": true,
+          "message": "TypeScript/JavaScript syntax OK",
+          "file": "frontend/next.config.js"
+        },
+        {
+          "passed": true,
+          "message": "TypeScript/JavaScript syntax OK",
+          "file": "frontend/postcss.config.js"
+        },
+        {
+          "passed": true,
+          "message": "TypeScript/JavaScript syntax OK",
+          "file": "frontend/tailwind.config.js"
+        },
+        {
+          "passed": true,
+          "message": "JSON syntax OK",
+          "file": "frontend/package.json"
+        },
+        {
+          "passed": true,
+          "message": "JSON syntax OK",
+          "file": "frontend/tsconfig.json"
+        },
+        {
+          "passed": true,
+          "message": "JSON syntax OK",
+          "file": "system_interface.json"
+        }
+      ],
+      "passed": true
+    },
+    {
+      "level": 2,
+      "name": "Cross-Reference",
+      "checks": [
+        {
+          "check": "api_route:generate_invoice_pdf",
+          "passed": true,
+          "message": "API route found for generate_invoice_pdf"
+        },
+        {
+          "check": "api_route:load_config",
+          "passed": true,
+          "message": "API route found for load_config"
+        },
+        {
+          "check": "api_route:manage_counter",
+          "passed": true,
+          "message": "API route found for manage_counter"
+        },
+        {
+          "check": "api_route:parse_invoice_input",
+          "passed": true,
+          "message": "API route found for parse_invoice_input"
+        },
+        {
+          "check": "api_route:save_invoice",
+          "passed": true,
+          "message": "API route found for save_invoice"
+        },
+        {
+          "check": "pipeline_endpoint",
+          "passed": true,
+          "message": "Pipeline endpoint found"
+        },
+        {
+          "check": "health_endpoint",
+          "passed": true,
+          "message": "Health endpoint found"
+        },
+        {
+          "check": "pydantic_model:generate_invoice_pdf",
+          "passed": true,
+          "message": "Pydantic model found for generate_invoice_pdf"
+        },
+        {
+          "check": "pydantic_model:load_config",
+          "passed": true,
+          "message": "Pydantic model found for load_config"
+        },
+        {
+          "check": "pydantic_model:manage_counter",
+          "passed": true,
+          "message": "Pydantic model found for manage_counter"
+        },
+        {
+          "check": "pydantic_model:parse_invoice_input",
+          "passed": true,
+          "message": "Pydantic model found for parse_invoice_input"
+        },
+        {
+          "check": "pydantic_model:save_invoice",
+          "passed": true,
+          "message": "Pydantic model found for save_invoice"
+        },
+        {
+          "check": "frontend_page:generate_invoice_pdf",
+          "passed": true,
+          "message": "Frontend page found for generate_invoice_pdf"
+        },
+        {
+          "check": "frontend_page:load_config",
+          "passed": true,
+          "message": "Frontend page found for load_config"
+        },
+        {
+          "check": "frontend_page:manage_counter",
+          "passed": true,
+          "message": "Frontend page found for manage_counter"
+        },
+        {
+          "check": "frontend_page:parse_invoice_input",
+          "passed": true,
+          "message": "Frontend page found for parse_invoice_input"
+        },
+        {
+          "check": "frontend_page:save_invoice",
+          "passed": true,
+          "message": "Frontend page found for save_invoice"
+        },
+        {
+          "check": "model_field:generate_invoice_pdf.invoice_data",
+          "passed": true,
+          "message": "Model field found: invoice_data"
+        },
+        {
+          "check": "model_field:generate_invoice_pdf.invoice_number",
+          "passed": true,
+          "message": "Model field found: invoice_number"
+        },
+        {
+          "check": "model_field:generate_invoice_pdf.config",
+          "passed": true,
+          "message": "Model field found: config"
+        },
+        {
+          "check": "model_field:load_config.config_path",
+          "passed": true,
+          "message": "Model field found: config_path"
+        },
+        {
+          "check": "model_field:manage_counter.counter_path",
+          "passed": true,
+          "message": "Model field found: counter_path"
+        },
+        {
+          "check": "model_field:manage_counter.action",
+          "passed": true,
+          "message": "Model field found: action"
+        },
+        {
+          "check": "model_field:parse_invoice_input.input_path",
+          "passed": true,
+          "message": "Model field found: input_path"
+        },
+        {
+          "check": "model_field:save_invoice.pdf_path",
+          "passed": true,
+          "message": "Model field found: pdf_path"
+        },
+        {
+          "check": "model_field:save_invoice.client_name",
+          "passed": true,
+          "message": "Model field found: client_name"
+        },
+        {
+          "check": "model_field:save_invoice.invoice_date",
+          "passed": true,
+          "message": "Model field found: invoice_date"
+        },
+        {
+          "check": "model_field:save_invoice.invoice_number",
+          "passed": true,
+          "message": "Model field found: invoice_number"
+        },
+        {
+          "check": "model_field:save_invoice.total",
+          "passed": true,
+          "message": "Model field found: total"
+        }
+      ],
+      "passed": true
+    },
+    {
+      "level": 3,
+      "name": "Accessibility",
+      "checks": [
+        {
+          "check": "accessibility_overview",
+          "passed": true,
+          "message": "Accessibility checks passed across 14 files"
+        }
+      ],
+      "passed": true
+    },
+    {
+      "level": 4,
+      "name": "Smoke",
+      "checks": [
+        {
+          "check": "api_import",
+          "passed": true,
+          "message": "api/main.py imports successfully"
+        },
+        {
+          "check": "app_object",
+          "passed": true,
+          "message": "FastAPI app object found"
+        },
+        {
+          "check": "health_route",
+          "passed": true,
+          "message": "GET /api/health route registered"
+        },
+        {
+          "check": "pipeline_route",
+          "passed": true,
+          "message": "POST /api/run-pipeline route registered"
+        },
+        {
+          "check": "total_routes",
+          "passed": true,
+          "message": "11 routes registered: /openapi.json, /docs, /docs/oauth2-redirect, /redoc, /api/health, /api/generate-invoice-pdf, /api/load-config, /api/manage-counter, /api/parse-invoice-input, /api/save-invoice, /api/run-pipeline"
+        }
+      ],
+      "passed": true
+    }
+  ]
+}

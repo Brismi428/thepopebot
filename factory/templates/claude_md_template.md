@@ -262,6 +262,57 @@ These are common mistakes that break WAT systems. Non-negotiable.
 - Do not skip secret validation in GitHub Actions — check required secrets exist before running
 - Do not use `@latest` for pinned action versions in GitHub Actions
 
+## Front-End (if applicable)
+
+{If the system has a generated front-end — include this section:}
+
+This system includes an interactive web front-end (Next.js) and API bridge (FastAPI).
+
+### Local Development
+
+```bash
+# Terminal 1: Start the API server
+pip install -r requirements.txt -r api/requirements.txt
+uvicorn api.main:app --reload --port 8000
+
+# Terminal 2: Start the frontend dev server
+cd frontend
+npm install
+npm run dev
+# Open http://localhost:3000
+```
+
+### API Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/health` | Health check — returns system status |
+| POST | `/api/run-pipeline` | Run the full tool pipeline in workflow order |
+{For each tool:}
+| POST | `/api/{tool-name}` | Run {tool description} |
+
+### Frontend Structure
+
+- `frontend/src/app/(marketing)/` — Landing page, feature overview
+- `frontend/src/app/(dashboard)/` — Tool forms, results, pipeline wizard
+- `frontend/src/components/` — Reusable UI components (ToolForm, ResultViewer, PipelineWizard)
+
+### Docker Deployment
+
+```bash
+docker compose -f docker-compose.frontend.yml up --build
+# App available at http://localhost:8000
+```
+
+The single container serves both the API (`/api/*`) and the static frontend (`/*`).
+
+### Design Configuration
+
+- `frontend_design.json` — UI design settings (archetype, fonts, palette, hero content)
+- `system_interface.json` — Tool schemas (source of truth for form generation and API endpoints)
+
+{If the system does NOT have a front-end — omit this section entirely.}
+
 ## Troubleshooting
 
 - **{Common issue 1}**: {Solution}
@@ -269,3 +320,6 @@ These are common mistakes that break WAT systems. Non-negotiable.
 - **Tool fails with missing dependency**: Run `pip install -r requirements.txt`
 - **MCP not available**: Check your Claude Code MCP configuration or use the HTTP fallback
 - **Subagent not found**: Ensure `.claude/agents/` directory exists and contains the subagent .md files. Run `/agents` in Claude Code to verify.
+- **Frontend build fails**: Run `cd frontend && npm install` then `npm run build`. Check for TypeScript errors.
+- **API bridge import error**: Verify tools are import-safe (no `sys.exit()` at module level). Run `python -c "from tools.{tool_name} import main"` to test.
+- **CORS error in browser**: Set `CORS_ORIGINS` environment variable to include your frontend URL.

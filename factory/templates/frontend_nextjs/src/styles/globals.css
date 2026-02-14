@@ -1,0 +1,120 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --bg-primary: #FAFBFC;
+    --bg-secondary: #F0F2F5;
+    --bg-tertiary: #E4E7EB;
+    --text-primary: #111827;
+    --text-secondary: #6B7280;
+    --text-muted: #9CA3AF;
+    --accent: #3B82F6;
+    --accent-hover: #2563EB;
+    --accent-subtle: #EFF6FF;
+    --success: #10B981;
+    --warning: #F59E0B;
+    --error: #EF4444;
+    --border: #E5E7EB;
+  }
+
+  [data-theme="dark"] {
+    --bg-primary: #0F1117;
+    --bg-secondary: #1A1D27;
+    --bg-tertiary: #252830;
+    --text-primary: #F9FAFB;
+    --text-secondary: #9CA3AF;
+    --text-muted: #6B7280;
+    --accent: #60A5FA;
+    --accent-hover: #93C5FD;
+    --accent-subtle: #1E3A5F;
+    --success: #34D399;
+    --warning: #FBBF24;
+    --error: #F87171;
+    --border: #2D3039;
+  }
+
+  html {
+    font-family: 'DM Sans', system-ui, sans-serif;
+  }
+
+  body {
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Space Grotesk', system-ui, sans-serif;
+    line-height: 1.2;
+  }
+
+  p, li, span, label {
+    line-height: 1.5;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply px-6 py-3 rounded-lg font-medium text-white transition-all duration-150;
+    background-color: var(--accent);
+  }
+  .btn-primary:hover {
+    background-color: var(--accent-hover);
+  }
+  .btn-primary:disabled {
+    @apply opacity-50 cursor-not-allowed;
+  }
+
+  .btn-secondary {
+    @apply px-6 py-3 rounded-lg font-medium transition-all duration-150 border;
+    color: var(--accent);
+    border-color: var(--accent);
+  }
+  .btn-secondary:hover {
+    background-color: var(--accent-subtle);
+  }
+
+  .btn-ghost {
+    @apply px-6 py-3 rounded-lg font-medium transition-all duration-150;
+    color: var(--text-secondary);
+  }
+  .btn-ghost:hover {
+    background-color: var(--bg-tertiary);
+  }
+
+  .card {
+    @apply rounded-xl p-6 border;
+    background-color: var(--bg-secondary);
+    border-color: var(--border);
+  }
+
+  .input-field {
+    @apply w-full h-10 px-3 rounded-lg border text-sm transition-all duration-150;
+    background-color: var(--bg-primary);
+    border-color: var(--border);
+    color: var(--text-primary);
+  }
+  .input-field::placeholder {
+    color: var(--text-muted);
+  }
+  .input-field:focus {
+    @apply outline-none ring-2 ring-offset-2;
+    ring-color: var(--accent);
+  }
+  .input-field.error {
+    border-color: var(--error);
+  }
+
+  .badge {
+    @apply inline-flex items-center px-3 py-1 rounded-full text-xs font-medium;
+    background-color: var(--accent-subtle);
+    color: var(--accent);
+  }
+
+  .skip-link {
+    @apply sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-50 focus:px-4 focus:py-2 focus:rounded-lg;
+    background-color: var(--accent);
+    color: white;
+  }
+}

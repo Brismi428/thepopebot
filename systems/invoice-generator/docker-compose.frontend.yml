@@ -1,0 +1,22 @@
+# docker-compose.frontend.yml
+# Single-container deployment for invoice-generator-wat-system
+# FastAPI serves API at /api/* and Next.js static export at /*
+
+services:
+  invoice-generator-wat-system:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    container_name: invoice-generator-wat-system
+    ports:
+      - "8000:8000"
+    environment:
+      - CORS_ORIGINS=http://localhost:8000,https://${DOMAIN:-localhost}
+      # No additional environment variables
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s

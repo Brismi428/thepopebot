@@ -12,6 +12,11 @@ Usage:
 
 Environment Variables:
     - {ENV_VAR_NAME}: {Description} (required/optional)
+
+Import Safety:
+    This tool is safe to import without side effects. All dependency checks
+    and argument parsing happen inside main(), not at module level.
+    This allows the API bridge to call main() directly via Python import.
 """
 
 import argparse
@@ -21,12 +26,35 @@ import os
 import sys
 from typing import Any
 
+# Only standard library imports at module level.
+# Third-party dependencies are imported inside main() to keep the module
+# import-safe — no sys.exit() at module level, no side effects on import.
+# This is required for the API bridge (FastAPI) to call main() directly.
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+
+def _check_dependencies() -> str | None:
+    """
+    Verify third-party dependencies are installed.
+
+    Returns None if all dependencies are available, or an error message string
+    listing what is missing. Called at the start of main(), NOT at module level.
+    """
+    missing = []
+    # {For each third-party dependency:}
+    # try:
+    #     import {package}
+    # except ImportError:
+    #     missing.append("{pip-package-name}")
+    if missing:
+        return f"Missing dependencies: {', '.join(missing)}. Run: pip install {' '.join(missing)}"
+    return None
 
 
 def main() -> dict[str, Any]:
@@ -36,6 +64,12 @@ def main() -> dict[str, Any]:
     Returns:
         dict: Result containing status, data, and any error messages.
     """
+    # Check dependencies before doing anything else
+    dep_error = _check_dependencies()
+    if dep_error:
+        logger.error(dep_error)
+        return {"status": "error", "data": None, "message": dep_error}
+
     parser = argparse.ArgumentParser(description="{Tool description}")
     parser.add_argument("--input", required=True, help="{Input description}")
     parser.add_argument("--output", default="output.json", help="Output file path")

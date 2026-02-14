@@ -1,0 +1,10 @@
+# Caddy route snippet for invoice-generator-wat-system
+# Option A: Subdomain routing
+invoice.example.com {
+    reverse_proxy localhost:8000
+}
+
+# Option B: Sub-path routing (add to existing Caddyfile)
+# handle_path /invoice-generator-wat-system/* {
+#     reverse_proxy localhost:8000
+# }

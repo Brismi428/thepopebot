@@ -438,3 +438,155 @@ Extract learnings and update the factory's knowledge base.
 6. Commit all library updates
 
 **Failure mode**: If learning extraction fails, the system build is still valid — learning is a bonus, not a requirement.
+
+---
+
+## Front-End Generation Workflow (On-Demand)
+
+This workflow runs separately from the 10-step backend build. It adds an interactive Next.js front-end and FastAPI bridge to an existing, proven WAT system.
+
+**Trigger**: You tell the factory "build a front-end for system X" (where X is an already-built system in `systems/`).
+
+### FE Step 1: Analyze System
+
+Read the existing system and produce a manifest for front-end generation.
+
+1. Run `factory/tools/analyze_system.py --system-dir systems/{system_name}/`
+2. The tool parses:
+   - `tools/*.py` via AST — extracts argparse arguments, env var references, output formats
+   - `workflow.md` — extracts step ordering, data flow, tool references
+   - `CLAUDE.md` — extracts system description, inputs/outputs
+   - `input/` — reads sample input files for realistic test data
+3. Runs import-safety checks on each tool (flags `sys.exit()` at module level, import failures)
+4. Outputs `system_interface.json` in the system directory
+
+**Gate**: Review `system_interface.json` before proceeding. Fix any AST parsing gaps, incorrect argument types, or missing tool references. The manifest is the source of truth for all downstream generation.
+
+**Failure mode**: If AST parsing fails for a tool, the manifest will include what it could extract plus an error note. Edit the manifest manually to fill in the gaps.
+
+---
+
+### FE Step 1b: Review Manifest
+
+Human reviews and optionally edits `system_interface.json`.
+
+1. Open `systems/{system_name}/system_interface.json`
+2. Verify each tool's arguments, types, and required flags are correct
+3. Verify workflow ordering matches the intended pipeline
+4. Verify import safety — tools flagged as unsafe need fixes before the API bridge can call them directly
+5. Edit as needed — downstream tools read this JSON, not the Python source
+
+**Gate**: Manifest is accurate and complete. Proceed only after review.
+
+---
+
+### FE Step 2: Design
+
+Generate or review the front-end design configuration.
+
+1. v1 uses the default "Professional SaaS" archetype (Space Grotesk + DM Sans, cool-tech palette)
+2. `frontend_design.json` is auto-generated with sensible defaults when `generate_frontend.py` runs
+3. Override before generation if you want different branding:
+   - `system_name`: Display name for the UI
+   - `hero.title`, `hero.description`: Landing page content
+   - `palette`: Color scheme (v1: "cool-tech" only, extensible later)
+4. Design system rules are codified in `factory/templates/frontend_design_system.md`
+
+**Failure mode**: If no design JSON exists, the generator creates defaults. You can always regenerate after editing the design file.
+
+---
+
+### FE Step 3: Generate API Bridge
+
+Create the FastAPI application that wraps each tool as an HTTP endpoint.
+
+1. Run `factory/tools/generate_api_bridge.py --system-dir systems/{system_name}/`
+2. Reads `system_interface.json` to determine:
+   - Which tools to expose as endpoints
+   - Argument schemas for Pydantic model generation
+   - Output formats for response type selection
+3. Generates:
+   - `api/main.py` — FastAPI app with CORS, health check, error handling, static serving
+   - `api/models/{tool_name}.py` — Pydantic request model per tool
+   - `api/requirements.txt` — FastAPI + uvicorn + pydantic dependencies
+   - `api/Dockerfile` — Container definition (Python slim + Node.js)
+4. Endpoint patterns:
+   - `POST /api/{tool-name}` — calls tool's `main()` via direct Python import
+   - `POST /api/run-pipeline` — chains all tools per workflow.md ordering
+   - `GET /api/health` — health check
+5. File-producing tools (PDF, CSV) return `FileResponse` with proper content-type
+6. Environment variables from the FastAPI process are available to tools
+
+**Failure mode**: If a tool is import-unsafe (flagged in Step 1), the generated endpoint may fail at runtime. Fix the tool first, then regenerate.
+
+---
+
+### FE Step 4: Generate Front-End
+
+Create the Next.js application.
+
+1. Run `factory/tools/generate_frontend.py --system-dir systems/{system_name}/`
+2. Reads `system_interface.json` + `frontend_design.json`
+3. Copies the project skeleton from `factory/templates/frontend_nextjs/`
+4. Generates:
+   - Root layout with Google Fonts, dark mode, skip-to-content link
+   - Marketing landing page with hero, feature cards, CTA
+   - Dashboard layout with sidebar navigation
+   - Tool form page per tool (fields auto-generated from argparse schema)
+   - Pipeline wizard page (multi-step form for running all tools in sequence)
+   - Result viewers per output type (JSON tree, PDF inline viewer, file download)
+5. Static export configuration (`output: 'export'` in next.config.js)
+6. Responsive layouts (mobile-first, breakpoints at 640/768/1024/1280)
+7. Accessibility: form labels, focus styles, heading hierarchy, aria attributes
+
+**Failure mode**: If the template skeleton is missing, the generator creates files from scratch. If a tool has no arguments, it generates a simple "Run" button with no form fields.
+
+---
+
+### FE Step 5: Validate
+
+Run the front-end test suite.
+
+1. Run `factory/tools/test_frontend.py --system-dir systems/{system_name}/`
+2. Level 1: Syntax — Python files parse, TypeScript brackets balanced, JSON valid
+3. Level 2: Cross-reference — every tool has an API route, a Pydantic model, and a frontend page
+4. Level 3: Accessibility — form labels present, heading hierarchy valid, focus styles exist
+5. Level 4: Smoke — FastAPI app imports, routes registered, health endpoint responds
+
+**Gate**: All levels must pass. Fix issues and re-run until clean.
+
+**Failure mode**: If Level 1 fails, downstream levels are skipped (fix syntax first). Level 3 (accessibility) issues should be fixed but are less critical than Level 2 (cross-reference) which would cause runtime failures.
+
+---
+
+### FE Step 6: Deploy Config
+
+Generate deployment configuration.
+
+1. Run `factory/tools/deploy_frontend.py --system-dir systems/{system_name}/ --domain {domain}`
+2. Generates:
+   - `docker-compose.frontend.yml` — single container, FastAPI serves API + static frontend
+   - `caddy_snippet.txt` — reverse proxy route for the system
+   - `.env.example` — updated with frontend-specific variables (CORS_ORIGINS, DOMAIN, PORT)
+3. Supports both standalone deployment (own domain) and integration with existing services stack
+
+**Failure mode**: If the system has no env vars, deployment configs will be minimal but functional.
+
+---
+
+### FE Step 7: Package
+
+Update documentation to include front-end information.
+
+1. Update `README.md` to include:
+   - Front-end setup instructions (npm install, npm run dev)
+   - API endpoint table
+   - Docker deployment instructions
+   - Local development workflow (run FastAPI + Next.js dev server)
+2. Update `CLAUDE.md` to include:
+   - Front-end section with local dev instructions
+   - API endpoints table
+   - Frontend deployment notes
+3. Verify the complete system structure includes all expected files
+
+**Failure mode**: If README or CLAUDE.md updates fail, the front-end is still functional — documentation can be added manually.

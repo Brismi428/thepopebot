@@ -188,6 +188,17 @@ def main() -> dict[str, Any]:
             else:
                 failed += 1
 
+        # Check api/main.py if it exists (front-end API bridge)
+        api_main = tools_dir.parent / "api" / "main.py"
+        if api_main.is_file():
+            logger.info("Found api/main.py — running syntax and structure checks")
+            api_result = test_single_tool(str(api_main))
+            all_results.append(api_result)
+            if api_result["overall"] == "pass":
+                passed += 1
+            else:
+                failed += 1
+
         summary = {
             "tools_tested": len(all_results),
             "passed": passed,

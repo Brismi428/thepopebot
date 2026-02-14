@@ -76,8 +76,9 @@ def generate_tool_code(tool_spec: dict, template: str) -> str:
         for ev in env_vars
     )
 
-    # Build imports
-    import_lines = [
+    # Build imports — split into stdlib (module level) and third-party (inside main)
+    # This keeps tools import-safe for the API bridge (FastAPI calls main() directly)
+    stdlib_imports = [
         "import argparse",
         "import json",
         "import logging",
@@ -85,9 +86,22 @@ def generate_tool_code(tool_spec: dict, template: str) -> str:
         "import sys",
         "from typing import Any",
     ]
+    third_party_imports = []
+    third_party_checks = []
     for dep in dependencies:
-        if dep.get("import"):
-            import_lines.append(dep["import"])
+        import_stmt = dep.get("import", "")
+        pip_name = dep.get("pip", "")
+        if import_stmt:
+            third_party_imports.append(import_stmt)
+            # Extract the module name for the dependency check
+            if import_stmt.startswith("from "):
+                mod = import_stmt.split()[1].split(".")[0]
+            elif import_stmt.startswith("import "):
+                mod = import_stmt.split()[1].split(".")[0].split(",")[0]
+            else:
+                mod = import_stmt
+            third_party_checks.append((mod, pip_name or mod))
+    import_lines = stdlib_imports
 
     # Build argument parser
     arg_lines = []
@@ -110,6 +124,30 @@ def generate_tool_code(tool_spec: dict, template: str) -> str:
     for i, step in enumerate(logic_steps, 1):
         logic_comments.append(f"        # Step {i}: {step}")
 
+    # Build _check_dependencies() body
+    if third_party_checks:
+        dep_check_lines = ["    missing = []"]
+        for mod, pip_pkg in third_party_checks:
+            dep_check_lines.append(f"    try:")
+            dep_check_lines.append(f'        import {mod}')
+            dep_check_lines.append(f"    except ImportError:")
+            dep_check_lines.append(f'        missing.append("{pip_pkg}")')
+        dep_check_lines.append('    if missing:')
+        dep_check_lines.append('        return f"Missing dependencies: {\', \'.join(missing)}. Run: pip install {\' \'.join(missing)}"')
+        dep_check_lines.append("    return None")
+        dep_check_body = chr(10).join(dep_check_lines)
+
+        # Third-party imports go inside main() after the dep check
+        third_party_block = chr(10).join(f"    {stmt}" for stmt in third_party_imports)
+    else:
+        dep_check_body = "    return None"
+        third_party_block = ""
+
+    # Build the dep check call + third-party imports for inside main()
+    main_preamble = '    # Check dependencies before doing anything else\n    dep_error = _check_dependencies()\n    if dep_error:\n        logger.error(dep_error)\n        return {"status": "error", "data": None, "message": dep_error}\n'
+    if third_party_block:
+        main_preamble += f"\n    # Import third-party dependencies (verified available by _check_dependencies)\n{third_party_block}\n"
+
     # Assemble the tool
     code = f'''"""
 {name} — {description}
@@ -129,11 +167,19 @@ Environment Variables:
 
 {chr(10).join(import_lines)}
 
+# Third-party dependencies are imported inside main() to keep the module
+# import-safe. No sys.exit() at module level, no side effects on import.
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+
+def _check_dependencies() -> str | None:
+    """Verify third-party dependencies are installed. Returns error message or None."""
+{dep_check_body}
 
 
 def main() -> dict[str, Any]:
@@ -143,6 +189,7 @@ def main() -> dict[str, Any]:
     Returns:
         dict: Result with status, data, and message.
     """
+{main_preamble}
     parser = argparse.ArgumentParser(description="{description}")
 {chr(10).join(arg_lines)}
     parser.add_argument("--output", default="output.json", help="Output file path")

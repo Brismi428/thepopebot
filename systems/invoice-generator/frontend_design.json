@@ -1,0 +1,19 @@
+{
+  "archetype": "professional-saas",
+  "system_name": "Invoice Generator WAT System",
+  "system_description": "- **No API calls** (all local processing)\n- **No secrets required** (for basic operation)\n- **Sequential execution** (clear, predictable flow)\n- **Atomic operations** (file locking prevents race conditions)\n- **Graceful degradation** (continues with degraded output rather than crashing)\n- **Full audit trail** (every invoice logged)",
+  "fonts": {
+    "heading": "Space Grotesk",
+    "body": "DM Sans",
+    "mono": "JetBrains Mono"
+  },
+  "palette": "cool-tech",
+  "hero": {
+    "badge": "5 Tools Available",
+    "title": "Invoice Generator WAT System",
+    "description": "- **No API calls** (all local processing)\n- **No secrets required** (for basic operation)\n- **Sequential execution** (clear, predictable flow)\n- **Atomic operations** (file locking prevents race conditions)\n- **Graceful degradation** (continues with degraded output rather than crashing)\n- **Full audit trail** (every invoice logged)",
+    "code_preview": "$ curl -X POST /api/run-pipeline\n  -d '{\"input\": \"data\"}'\n\n// 5 tools chained automatically"
+  },
+  "features_title": "Tools",
+  "cta_description": "Run Invoice Generator WAT System tools individually or as a complete pipeline."
+}
