@@ -6,32 +6,32 @@ import { Wrench, Workflow } from 'lucide-react';
 
 const TOOLS = [
     {
-        "href": "/dashboard/generate-invoice-pdf/",
+        "href": "/generate-invoice-pdf/",
         "label": "Generate Invoice Pdf",
         "description": "Generate professional PDF invoice with ReportLab."
     },
     {
-        "href": "/dashboard/load-config/",
+        "href": "/load-config/",
         "label": "Load Config",
         "description": "Load company branding and tax configuration with sensible defaults."
     },
     {
-        "href": "/dashboard/manage-counter/",
+        "href": "/manage-counter/",
         "label": "Manage Counter",
         "description": "Atomically increment invoice counter with file locking."
     },
     {
-        "href": "/dashboard/parse-invoice-input/",
+        "href": "/parse-invoice-input/",
         "label": "Parse Invoice Input",
         "description": "Parse and validate invoice JSON input with business rule checks."
     },
     {
-        "href": "/dashboard/save-invoice/",
+        "href": "/save-invoice/",
         "label": "Save Invoice",
         "description": "Save PDF to output directory with standardized filename and append audit log."
     },
     {
-        "href": "/dashboard/pipeline/",
+        "href": "/pipeline/",
         "label": "Run Pipeline",
         "description": "Execute all tools in sequence as a complete workflow."
     }

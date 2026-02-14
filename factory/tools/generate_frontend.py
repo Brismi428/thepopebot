@@ -24,6 +24,7 @@ import argparse
 import json
 import logging
 import os
+import re
 import shutil
 import sys
 from pathlib import Path
@@ -46,10 +47,50 @@ ARG_TYPE_TO_FIELD = {
 }
 
 
+def sanitize_description(text: str, max_length: int = 160) -> str:
+    """Sanitize a description string for safe use in JS strings and JSX.
+
+    Strips markdown formatting (headers, bullets, bold, italic, links, code),
+    collapses whitespace/newlines into a single line, escapes single quotes,
+    and truncates to max_length characters.
+    """
+    if not text:
+        return ""
+    # Remove markdown headers (e.g. ## Heading)
+    s = re.sub(r"^#{1,6}\s+", "", text, flags=re.MULTILINE)
+    # Remove markdown links [text](url) -> text
+    s = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", s)
+    # Remove markdown images ![alt](url)
+    s = re.sub(r"!\[([^\]]*)\]\([^)]*\)", r"\1", s)
+    # Remove bold/italic markers (**text**, __text__, *text*, _text_)
+    s = re.sub(r"\*{1,2}([^*]+)\*{1,2}", r"\1", s)
+    s = re.sub(r"_{1,2}([^_]+)_{1,2}", r"\1", s)
+    # Remove inline code backticks
+    s = re.sub(r"`([^`]*)`", r"\1", s)
+    # Remove code fences
+    s = re.sub(r"```[\s\S]*?```", " ", s)
+    # Remove bullet point markers (-, *, +, numbered lists)
+    s = re.sub(r"^\s*[-*+]\s+", "", s, flags=re.MULTILINE)
+    s = re.sub(r"^\s*\d+\.\s+", "", s, flags=re.MULTILINE)
+    # Remove blockquote markers
+    s = re.sub(r"^\s*>\s*", "", s, flags=re.MULTILINE)
+    # Remove horizontal rules
+    s = re.sub(r"^\s*[-*_]{3,}\s*$", "", s, flags=re.MULTILINE)
+    # Collapse all whitespace (newlines, tabs, multiple spaces) into single spaces
+    s = re.sub(r"\s+", " ", s).strip()
+    # Escape single quotes for safe embedding in JS string literals
+    s = s.replace("'", "\\'")
+    # Truncate to max_length, adding ellipsis if needed
+    if len(s) > max_length:
+        s = s[: max_length - 3].rstrip() + "..."
+    return s
+
+
 def generate_design_json(manifest: dict) -> dict:
     """Generate default frontend_design.json from the Professional SaaS archetype."""
     system_name = manifest.get("system", {}).get("system_name", "WAT System")
-    description = manifest.get("system", {}).get("description", "A WAT-powered system.")
+    raw_description = manifest.get("system", {}).get("description", "A WAT-powered system.")
+    description = sanitize_description(raw_description, max_length=300)
     tools = manifest.get("tools", [])
 
     return {
@@ -265,14 +306,14 @@ def generate_dashboard_page(manifest: dict, design: dict) -> str:
         route = name.replace("_", "-")
         desc = (tool.get("docstring", "") or "").split("\n")[0] or f"Run {display}"
         tool_items.append({
-            "href": f"/dashboard/{route}/",
+            "href": f"/{route}/",
             "label": display,
             "description": desc,
         })
 
     # Add pipeline entry
     tool_items.append({
-        "href": "/dashboard/pipeline/",
+        "href": "/pipeline/",
         "label": "Run Pipeline",
         "description": "Execute all tools in sequence as a complete workflow.",
     })
@@ -335,8 +376,8 @@ def generate_dashboard_layout(manifest: dict, design: dict) -> str:
         name = tool["name"]
         display = name.replace("_", " ").title()
         route = name.replace("_", "-")
-        nav_items.append({"href": f"/dashboard/{route}/", "label": display})
-    nav_items.append({"href": "/dashboard/pipeline/", "label": "Pipeline"})
+        nav_items.append({"href": f"/{route}/", "label": display})
+    nav_items.append({"href": "/pipeline/", "label": "Pipeline"})
 
     nav_json = json.dumps(nav_items, indent=4)
 
@@ -442,6 +483,11 @@ def generate_landing_page(manifest: dict, design: dict) -> str:
     tools = manifest.get("tools", [])
     hero = design.get("hero", {})
     system_name = design.get("system_name", "WAT System")
+    # Sanitize the hero description to prevent multiline markdown breaking JSX
+    hero_description = sanitize_description(
+        hero.get("description", design.get("system_description", "")),
+        max_length=300,
+    )
 
     feature_cards = []
     for tool in tools:
@@ -482,7 +528,7 @@ export default function HomePage() {{
               {hero.get("title", system_name)}
             </h1>
             <p className="text-lg mb-8 max-w-prose" style={{{{ color: 'var(--text-secondary)' }}}}>
-              {hero.get("description", design.get("system_description", ""))}
+              {hero_description}
             </p>
             <div className="flex flex-wrap gap-4">
               <Link href="/dashboard/" className="btn-primary inline-flex items-center gap-2">
@@ -501,7 +547,7 @@ export default function HomePage() {{
           >
             <div className="card p-8">
               <pre className="font-mono text-sm whitespace-pre-wrap" style={{{{ color: 'var(--text-secondary)' }}}}>
-{hero.get("code_preview", "$ curl -X POST /api/run-pipeline")}
+{{`{hero.get("code_preview", "$ curl -X POST /api/run-pipeline")}`}}
               </pre>
             </div>
           </motion.div>
@@ -539,7 +585,8 @@ export default function HomePage() {{
 def generate_root_layout(design: dict) -> str:
     """Generate the root layout.tsx."""
     system_name = design.get("system_name", "WAT System")
-    description = design.get("system_description", "A WAT-powered system.")
+    raw_description = design.get("system_description", "A WAT-powered system.")
+    description = sanitize_description(raw_description, max_length=160)
 
     return f"""import type {{ Metadata }} from 'next';
 import '@/styles/globals.css';

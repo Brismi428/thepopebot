@@ -1,5 +1,5 @@
-{/* Pipeline wizard component template — multi-step form for running the full pipeline */}
 'use client';
+// Pipeline wizard component template — multi-step form for running the full pipeline
 
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';

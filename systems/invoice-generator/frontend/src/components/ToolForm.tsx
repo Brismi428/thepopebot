@@ -1,5 +1,5 @@
-{/* Tool form component template — generates form fields from tool arguments */}
 'use client';
+// Tool form component template — generates form fields from tool arguments
 
 import { useState } from 'react';
 import { motion } from 'framer-motion';
@@ -8,7 +8,7 @@ import { Play, Loader2 } from 'lucide-react';
 interface FormField {
   name: string;
   label: string;
-  type: 'text' | 'number' | 'select' | 'textarea' | 'checkbox' | 'file';
+  type: string;
   required?: boolean;
   placeholder?: string;
   choices?: string[];

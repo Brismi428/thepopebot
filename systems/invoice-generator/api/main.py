@@ -31,6 +31,11 @@ SYSTEM_ROOT = Path(__file__).parent.parent
 if str(SYSTEM_ROOT) not in sys.path:
     sys.path.insert(0, str(SYSTEM_ROOT))
 
+# Add the api directory to Python path so models can be imported
+API_DIR = Path(__file__).parent
+if str(API_DIR) not in sys.path:
+    sys.path.insert(0, str(API_DIR))
+
 # Import Pydantic models
 from models.generate_invoice_pdf import GenerateInvoicePdfRequest
 from models.load_config import LoadConfigRequest

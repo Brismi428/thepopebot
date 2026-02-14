@@ -17,7 +17,7 @@ RUN pip install --no-cache-dir -r requirements.txt -r api/requirements.txt
 COPY . .
 
 # Build frontend
-RUN cd frontend && npm ci && npm run build
+RUN cd frontend && npm install && npm run build
 
 EXPOSE 8000
 

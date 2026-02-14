@@ -8,27 +8,27 @@ import clsx from 'clsx';
 
 const NAV_ITEMS = [
     {
-        "href": "/dashboard/generate-invoice-pdf/",
+        "href": "/generate-invoice-pdf/",
         "label": "Generate Invoice Pdf"
     },
     {
-        "href": "/dashboard/load-config/",
+        "href": "/load-config/",
         "label": "Load Config"
     },
     {
-        "href": "/dashboard/manage-counter/",
+        "href": "/manage-counter/",
         "label": "Manage Counter"
     },
     {
-        "href": "/dashboard/parse-invoice-input/",
+        "href": "/parse-invoice-input/",
         "label": "Parse Invoice Input"
     },
     {
-        "href": "/dashboard/save-invoice/",
+        "href": "/save-invoice/",
         "label": "Save Invoice"
     },
     {
-        "href": "/dashboard/pipeline/",
+        "href": "/pipeline/",
         "label": "Pipeline"
     }
 ];

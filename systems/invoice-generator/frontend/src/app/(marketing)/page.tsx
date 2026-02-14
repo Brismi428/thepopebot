@@ -24,12 +24,7 @@ export default function HomePage() {
               Invoice Generator WAT System
             </h1>
             <p className="text-lg mb-8 max-w-prose" style={{ color: 'var(--text-secondary)' }}>
-              - **No API calls** (all local processing)
-- **No secrets required** (for basic operation)
-- **Sequential execution** (clear, predictable flow)
-- **Atomic operations** (file locking prevents race conditions)
-- **Graceful degradation** (continues with degraded output rather than crashing)
-- **Full audit trail** (every invoice logged)
+              Generate professional invoices with local processing, atomic operations, and a full audit trail. No API calls or secrets required.
             </p>
             <div className="flex flex-wrap gap-4">
               <Link href="/dashboard/" className="btn-primary inline-flex items-center gap-2">
@@ -48,10 +43,10 @@ export default function HomePage() {
           >
             <div className="card p-8">
               <pre className="font-mono text-sm whitespace-pre-wrap" style={{ color: 'var(--text-secondary)' }}>
-$ curl -X POST /api/run-pipeline
+{`$ curl -X POST /api/run-pipeline
   -d '{"input": "data"}'
 
-// 5 tools chained automatically
+// 5 tools chained automatically`}
               </pre>
             </div>
           </motion.div>

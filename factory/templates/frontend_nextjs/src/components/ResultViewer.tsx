@@ -1,5 +1,5 @@
-{/* Result viewer component — renders JSON, PDF, CSV, or file downloads */}
 'use client';
+// Result viewer component — renders JSON, PDF, CSV, or file downloads
 
 import { useState } from 'react';
 import { motion } from 'framer-motion';
