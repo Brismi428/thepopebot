@@ -1,9 +1,8 @@
-name: "Site Intelligence Pack"
+name: "site-intelligence-pack"
 description: |
-  Comprehensive website analysis system with three specialist components for analyzing websites and producing evidence-backed business intelligence reports.
 
 ## Purpose
-Build a GitHub-native, automated website intelligence gathering system that analyzes target domains through a three-phase pipeline: (1) crawl and inventory discovery, (2) intelligent page ranking and prioritization, (3) deep extraction of structured business data, and (4) synthesis into an evidence-backed intelligence pack. The system must respect robots.txt, handle failures gracefully, and produce auditable, citation-backed reports suitable for competitive analysis, market research, and lead qualification.
+WAT System PRP (Product Requirements Prompt) — a structured blueprint that gives the factory enough context to build a complete, working system in one pass.
 
 ## Core Principles
 1. **Context is King**: Include ALL necessary documentation, references, and caveats
@@ -15,151 +14,226 @@ Build a GitHub-native, automated website intelligence gathering system that anal
 ---
 
 ## Goal
-Build a fully autonomous website intelligence system that accepts a domain (or batch CSV of domains), crawls and analyzes the site, extracts structured business intelligence, and produces a comprehensive JSON intelligence pack with a human-readable summary report — all committed to the repository with full evidence provenance and compliance with robots.txt.
 
-Success looks like: A user opens a GitHub Issue with "Analyze example.com", and 5-10 minutes later a PR is opened with a complete intelligence pack (JSON + README) containing ranked pages, extracted offers/pricing/policies, and synthesized business insights — every claim backed by URL + excerpt citations.
+Build a comprehensive website analysis system that produces evidence-backed business intelligence reports by crawling target domains, ranking pages by relevance, extracting structured data from top pages, and synthesizing findings with full evidence provenance. The system must respect robots.txt, enforce rate limits, handle multi-domain batch processing, and produce audit-ready JSON outputs with quoted evidence for every claim.
+
+**End state:** A scheduled or on-demand workflow that takes a domain (or CSV of domains), produces a complete "Site Intelligence Pack" JSON file with page inventory, ranked pages, deep extractions, synthesized findings, and an evidence index — all committed to the repo under `outputs/{domain}/{timestamp}/`.
+
+---
 
 ## Why
-- **Business value**: Enables competitive intelligence, lead qualification, and market research at scale without manual research teams
-- **User impact**: Converts hours of manual website research into minutes of automated analysis
-- **Automation gap**: Eliminates manual website reading, note-taking, and data extraction for business intelligence
-- **Who benefits**: Sales teams (lead qualification), product teams (competitive analysis), research teams (market intelligence) — used on-demand or nightly batch
-- **Frequency**: On-demand (workflow_dispatch) for ad-hoc research; optional nightly scheduled batch for ongoing monitoring
+
+- **Business value**: Automates 4-8 hours of manual competitive research into a 10-15 minute workflow, enabling marketing/sales teams to gather actionable intelligence at scale.
+- **What it automates**: Manual website crawling, note-taking, screenshot collection, pricing extraction, feature comparison, and report writing.
+- **Who benefits**: GTM teams (sales, marketing, BD) who need structured intelligence on prospects, competitors, or partnership targets. Runs nightly for a watchlist or on-demand for ad-hoc research.
+
+---
 
 ## What
-From the perspective of someone triggering the system:
 
-**Single domain mode (workflow_dispatch)**:
-1. User provides a domain (e.g., `example.com`)
-2. System crawls the site (respecting robots.txt), discovers pages, and builds an inventory
-3. System ranks pages by relevance (heuristics + semantic scoring)
-4. System deep-extracts top K pages for structured data (offers, pricing, policies, etc.)
-5. System synthesizes findings into a structured intelligence pack with evidence index
-6. System validates that all claims have supporting evidence (url + excerpt)
-7. System commits output files (JSON + README) to `outputs/{domain}/`
-8. System opens a PR or commits directly (based on AUTO_MERGE setting)
+The system receives a target domain (single input or batch CSV), crawls up to 200 pages, ranks them by relevance (pricing, offers, FAQs, policies, testimonials), deep-extracts structured data from the top K pages, synthesizes findings with evidence tracking, and commits the full intelligence pack to the repo.
 
-**Batch mode (scheduled or workflow_dispatch with CSV)**:
-1. System reads `inputs/targets.csv` (columns: `domain`, optional `priority`)
-2. System processes each domain sequentially (to respect rate limits)
-3. System outputs one intelligence pack per domain to `outputs/{domain}/`
-4. System commits all outputs in a single commit with summary
+### User-visible behavior:
 
-**Failure modes handled**:
-- Robots.txt disallows crawling → skip crawl, report robots.txt excerpt in output
-- Pages require login/paywall → mark as inaccessible with reason, continue with accessible pages
-- Firecrawl fails → fallback to direct HTTP + BeautifulSoup
-- Fewer than 5 pages extracted → open GitHub Issue with failure summary, still commit partial output
-- Rate limit hit → pause, wait, retry with exponential backoff
+1. **Trigger**: `workflow_dispatch` with a single domain input OR scheduled run that processes `inputs/targets.csv`
+2. **Execution**: System fetches robots.txt, crawls the site (respecting disallowed paths and rate limits), ranks pages, extracts structured data, and synthesizes findings
+3. **Output**: Commits to `outputs/{domain}/{timestamp}/` containing:
+   - `inventory.json` — all discovered pages with canonical URLs, titles, dedup clusters
+   - `ranked_pages.json` — pages sorted by relevance with category tags
+   - `deep_extract.json` — structured extractions from top K pages with quoted evidence
+   - `site_intelligence_pack.json` — final synthesized report with evidence index
+   - `README.md` — human-readable summary
+4. **Failure handling**: If < 5 pages extracted successfully, open a GitHub Issue with diagnostic details but still commit partial outputs
 
 ### Success Criteria
-- [x] System accepts single domain via workflow_dispatch input or batch CSV from `inputs/targets.csv`
-- [x] System respects robots.txt: fetches robots.txt first, skips disallowed paths, includes robots summary in output
-- [x] System crawls up to 200 pages per site (default), discovers key pages (home, about, pricing, faq, contact, policies, terms, blog)
-- [x] System ranks pages by relevance using heuristics (path keywords) + lightweight semantic scoring (titles/headings/first N chars)
-- [x] System deep-extracts top K pages (default 10) for structured fields: offers, pricing, guarantees, process steps, FAQs, contact methods, policies, testimonials
-- [x] System synthesizes findings into structured JSON: positioning, offers_and_pricing, customer_journey, trust_signals, compliance_and_policies, unknowns_and_gaps
-- [x] System validates evidence: every claim in synthesized_findings must have evidence_index entry with url + excerpt + extracted_at + page_title
-- [x] System de-duplicates URLs: canonicalize URLs (strip utm params, normalize trailing slashes, lowercase host), cluster near-identical pages
-- [x] System rate-limits: ~1-2 req/sec, stops early on repeated errors
-- [x] System commits outputs to repo: `outputs/{domain}/inventory.json`, `ranked_pages.json`, `deep_extract.json`, `site_intelligence_pack.json`, `README.md` (run report)
-- [x] System runs autonomously via GitHub Actions on schedule (optional nightly batch) or workflow_dispatch (single domain)
-- [x] All three execution paths work: CLI (local testing), GitHub Actions (production), Agent HQ (issue-driven)
-- [x] System opens GitHub Issue on major failures (fewer than 5 pages extracted) with failure summary and still commits partial output
-- [x] System handles fallback: Firecrawl failure → HTTP + BeautifulSoup; still blocked → produce partial pack with "inaccessible" section
+
+- [x] Successfully crawls target domain (max 200 pages)
+- [x] Respects robots.txt (fetches first, checks disallowed paths, skips blocked URLs)
+- [x] Rate limiting enforced (1-2 req/sec with politeness controls)
+- [x] Page discovery attempts explicit paths: /pricing, /faq, /about, /contact, /privacy, /terms
+- [x] Relevance ranking applied to all pages (priority: offers/pricing → about/faq → blog/other)
+- [x] Deep extraction on top K pages (K = 10-20 depending on page count)
+- [x] Every synthesized claim has evidence entries (url + excerpt + timestamp)
+- [x] De-duplication applied (canonical URLs, content hashing, cluster IDs)
+- [x] JSON schema validation on final output
+- [x] Outputs committed to `outputs/{domain}/{timestamp}/`
+- [x] GitHub Issue created if < 5 pages extracted or critical failure
+- [x] System runs autonomously via GitHub Actions on schedule
+- [x] Results are committed back to repo or delivered via webhook/notification
+- [x] All three execution paths work: CLI, GitHub Actions, Agent HQ
 
 ---
 
 ## Inputs
 
 ```yaml
-- name: "domain"
+- name: "target_domain"
   type: "string"
   source: "workflow_dispatch input OR first column of inputs/targets.csv"
-  required: true (for single-domain mode)
-  description: "Target domain to analyze (without protocol). Examples: example.com, www.example.com"
+  required: true
+  description: "Domain to analyze (without protocol, e.g., 'example.com')"
   example: "stripe.com"
-
-- name: "batch_csv_path"
-  type: "string (file path)"
-  source: "workflow_dispatch input OR default to inputs/targets.csv"
-  required: false (for batch mode)
-  description: "Path to CSV file containing batch targets. Columns: domain (required), priority (optional)"
-  example: "inputs/targets.csv"
 
 - name: "max_pages"
   type: "integer"
-  source: "workflow_dispatch input OR environment variable"
+  source: "workflow_dispatch input (default: 200)"
   required: false
-  description: "Maximum pages to crawl per site (default: 200)"
+  description: "Maximum pages to crawl per domain"
   example: "200"
 
-- name: "top_k_deep_extract"
+- name: "deep_extract_count"
   type: "integer"
-  source: "workflow_dispatch input OR environment variable"
+  source: "workflow_dispatch input (default: 15)"
   required: false
-  description: "Number of top-ranked pages to deep extract (default: 10)"
-  example: "10"
+  description: "Number of top-ranked pages to deep-extract"
+  example: "15"
 
-- name: "rate_limit_rps"
-  type: "float"
-  source: "workflow_dispatch input OR environment variable"
+- name: "batch_mode"
+  type: "boolean"
+  source: "workflow_dispatch input (default: false)"
   required: false
-  description: "Rate limit in requests per second (default: 1.5)"
-  example: "1.5"
+  description: "If true, process all domains in inputs/targets.csv sequentially"
+  example: "false"
 ```
+
+---
 
 ## Outputs
 
 ```yaml
-- name: "site_intelligence_pack.json"
-  type: "JSON"
-  destination: "repo commit at outputs/{domain}/site_intelligence_pack.json"
-  description: "Complete intelligence pack with site info, inventory, ranked pages, deep extract notes, synthesized findings, evidence index, and run metadata"
-  example: |
-    {
-      "site": {
-        "target_url": "https://stripe.com",
-        "domain": "stripe.com",
-        "crawled_at_iso": "2026-02-14T14:30:00Z",
-        "robots": {
-          "fetched_url": "https://stripe.com/robots.txt",
-          "allowed_summary": "Most paths allowed",
-          "disallowed_summary": "Disallowed: /admin, /internal",
-          "raw_excerpt": "User-agent: *\nDisallow: /admin"
-        }
-      },
-      "inventory": [...],
-      "ranked_pages": [...],
-      "deep_extract_notes": {...},
-      "synthesized_findings": {...},
-      "evidence_index": {...},
-      "run_metadata": {...}
-    }
-
 - name: "inventory.json"
   type: "JSON"
-  destination: "repo commit at outputs/{domain}/inventory.json"
-  description: "Full page inventory with URLs, titles, discovery info, HTTP status, content hashes, dedup clusters"
-  example: "Array of {url, canonical_url, title, discovered_from, http_status, content_hash, dedup_cluster_id, notes}"
+  destination: "outputs/{domain}/{timestamp}/inventory.json"
+  description: "All discovered pages with URLs, titles, HTTP status, content hashes, dedup cluster IDs"
+  example: |
+    [
+      {
+        "url": "https://example.com/pricing",
+        "canonical_url": "https://example.com/pricing",
+        "title": "Pricing Plans",
+        "discovered_from": "sitemap",
+        "http_status": 200,
+        "content_hash": "sha256:abc123...",
+        "dedup_cluster_id": "cluster_001",
+        "notes": null
+      }
+    ]
 
 - name: "ranked_pages.json"
   type: "JSON"
-  destination: "repo commit at outputs/{domain}/ranked_pages.json"
-  description: "Pages ranked by relevance with scores, reasons, and categories"
-  example: "Array of {url, canonical_url, rank, reasons: [string], category: string}"
+  destination: "outputs/{domain}/{timestamp}/ranked_pages.json"
+  description: "Pages sorted by relevance score with category tags"
+  example: |
+    [
+      {
+        "url": "https://example.com/pricing",
+        "canonical_url": "https://example.com/pricing",
+        "rank": 1,
+        "reasons": ["Path contains 'pricing'", "Title indicates pricing information"],
+        "category": "offers_and_pricing"
+      }
+    ]
 
 - name: "deep_extract.json"
   type: "JSON"
-  destination: "repo commit at outputs/{domain}/deep_extract.json"
-  description: "Deep-extracted structured data from top K pages"
-  example: "Object with pages array containing extracted_entities, offers, pricing, how_it_works, faq, testimonials, policies, constraints"
+  destination: "outputs/{domain}/{timestamp}/deep_extract.json"
+  description: "Structured extractions from top K pages with quoted evidence"
+  example: |
+    {
+      "pages": [
+        {
+          "url": "https://example.com/pricing",
+          "canonical_url": "https://example.com/pricing",
+          "title": "Pricing Plans",
+          "summary": "Three pricing tiers: Starter ($29/mo), Pro ($99/mo), Enterprise (custom)",
+          "offers": [
+            {
+              "name": "Pro Plan",
+              "price": "$99/month",
+              "billing_terms": "Annual billing available at 20% discount",
+              "guarantees": "30-day money-back guarantee",
+              "evidence": ["EV_001", "EV_002"]
+            }
+          ]
+        }
+      ]
+    }
+
+- name: "site_intelligence_pack.json"
+  type: "JSON"
+  destination: "outputs/{domain}/{timestamp}/site_intelligence_pack.json"
+  description: "Final synthesized intelligence report with evidence index"
+  example: |
+    {
+      "site": {
+        "target_url": "https://example.com",
+        "domain": "example.com",
+        "crawled_at_iso": "2026-02-14T14:30:00Z",
+        "robots": {
+          "fetched_url": "https://example.com/robots.txt",
+          "allowed_summary": "All pages allowed except /admin",
+          "disallowed_summary": "/admin",
+          "raw_excerpt": "User-agent: *\nDisallow: /admin"
+        }
+      },
+      "synthesized_findings": {
+        "positioning": {
+          "claims": [
+            {
+              "id": "POS_001",
+              "claim": "Targets SMBs in e-commerce vertical",
+              "evidence": ["EV_015", "EV_022"]
+            }
+          ]
+        }
+      },
+      "evidence_index": {
+        "EV_001": {
+          "url": "https://example.com/pricing",
+          "excerpt": "Pro Plan: $99/month with unlimited users",
+          "page_title": "Pricing Plans",
+          "extracted_at_iso": "2026-02-14T14:35:12Z"
+        }
+      }
+    }
 
 - name: "README.md"
   type: "Markdown"
-  destination: "repo commit at outputs/{domain}/README.md"
-  description: "Human-readable run report with summary, key findings, robots compliance, and any issues encountered"
-  example: "# Site Intelligence Pack: stripe.com\n\n## Summary\nCrawled 147 pages, ranked 147, deep-extracted 10..."
+  destination: "outputs/{domain}/{timestamp}/README.md"
+  description: "Human-readable summary of findings"
+  example: |
+    # Site Intelligence Pack: example.com
+    Generated: 2026-02-14 14:30:00 UTC
+    
+    ## Summary
+    Crawled 187 pages, extracted 15 deep pages.
+    Primary offering: SaaS analytics platform for e-commerce.
+    
+    ## Key Findings
+    - Three pricing tiers: Starter ($29/mo), Pro ($99/mo), Enterprise (custom)
+    - 30-day money-back guarantee on all plans
+    - Targets SMB e-commerce merchants
+    
+    ## Files
+    - inventory.json: Full page inventory (187 pages)
+    - ranked_pages.json: Relevance-ranked pages (187 pages)
+    - deep_extract.json: Structured extractions (15 pages)
+    - site_intelligence_pack.json: Final intelligence pack with evidence
+
+- name: "GitHub Issue (on failure)"
+  type: "GitHub Issue"
+  destination: "Repository issues"
+  description: "Created if < 5 pages extracted or critical failure"
+  example: |
+    Title: "Site Intelligence Pack FAILED: example.com"
+    Body:
+    Target: example.com
+    Timestamp: 2026-02-14T14:30:00Z
+    Pages crawled: 2
+    Pages extracted: 1
+    Error: Firecrawl API returned 429 (rate limited) after 3 retries.
+    Attempted fallback to HTTP scraping but site requires JavaScript rendering.
+    Partial outputs committed to: outputs/example.com/2026-02-14T143000/
 ```
 
 ---
@@ -167,104 +241,101 @@ From the perspective of someone triggering the system:
 ## All Needed Context
 
 ### Documentation & References
+
 ```yaml
 # MUST READ — Include these in context when building
+- url: "https://docs.firecrawl.dev/api-reference/endpoint/crawl"
+  why: "Firecrawl crawl endpoint parameters, rate limits, response format"
 
-- url: "https://docs.firecrawl.dev/api-reference/crawl"
-  why: "Firecrawl crawl endpoint usage, parameters (limit, scrapeOptions), response structure"
-
-- url: "https://docs.firecrawl.dev/api-reference/scrape"
-  why: "Firecrawl scrape endpoint for single-page deep extraction, formats (markdown, html, structured)"
+- url: "https://docs.firecrawl.dev/api-reference/endpoint/scrape"
+  why: "Firecrawl scrape endpoint for single-page extraction with selectors"
 
 - doc: "config/mcp_registry.md"
-  why: "Check Firecrawl MCP availability and capabilities"
+  why: "Check Firecrawl MCP capabilities and fallback strategies"
 
 - doc: "library/patterns.md"
-  why: "Select the best workflow pattern for multi-phase website analysis pipeline"
+  why: "Select workflow pattern (Scrape > Process > Output + Fan-Out > Process > Merge)"
 
 - doc: "library/tool_catalog.md"
-  why: "Identify reusable tool patterns for web scraping, data extraction, and validation"
+  why: "Reuse firecrawl_scrape, rest_client, structured_extract, github_create_issue patterns"
 
-- url: "https://www.robotstxt.org/robotstxt.html"
-  why: "robots.txt specification for parsing and compliance checking"
+- url: "https://www.rfc-editor.org/rfc/rfc9309.html"
+  why: "robots.txt specification for parsing and compliance"
 
-- url: "https://docs.python.org/3/library/urllib.parse.html"
-  why: "URL parsing and canonicalization (urlparse, urlunparse, urljoin)"
-
-- url: "https://docs.python.org/3/library/hashlib.html"
-  why: "Content hashing for de-duplication (hashlib.md5 or sha256)"
-
-- url: "https://github.com/anthropics/anthropic-sdk-python"
-  why: "Claude API for semantic scoring and synthesis tasks"
+- url: "https://json-schema.org/understanding-json-schema"
+  why: "JSON Schema validation for final output structure"
 ```
 
 ### Workflow Pattern Selection
+
 ```yaml
-# Reference library/patterns.md
-pattern: "Scrape > Process > Output + Fan-Out > Process > Merge (for batch mode)"
+pattern: "Scrape > Process > Output + Fan-Out > Process > Merge + Collect > Transform > Store"
 rationale: |
-  The system follows a multi-phase pipeline:
-  1. Scrape (crawl + inventory) — Uses Firecrawl MCP to crawl domain and build page inventory
-  2. Process (rank) — Applies heuristics and semantic scoring to rank pages by relevance
-  3. Process (deep extract) — Deep-scrapes top K pages and extracts structured fields
-  4. Process (synthesize + validate) — Merges extracts into intelligence pack with evidence validation
-  5. Output — Commits JSON + README to repo
-
-  For batch mode, we apply Fan-Out > Process > Merge pattern where each domain is an independent unit of work.
-  However, to respect rate limits, batch processing is SEQUENTIAL by default (not parallel).
-  Agent Teams is NOT recommended because tasks are NOT independent (sequential processing required for rate limits).
-
+  Base pattern is Scrape > Process > Output (crawl → extract → commit).
+  Fan-Out > Process > Merge is used for parallel deep extraction of top K pages (3+ independent extraction tasks).
+  Collect > Transform > Store handles the final synthesis and evidence indexing phase.
 modifications: |
-  - Add robots.txt pre-check before crawling
-  - Add de-duplication step after inventory
-  - Add evidence validation step after synthesis
-  - Add fallback chain: Firecrawl → HTTP + BeautifulSoup → partial output with "inaccessible" section
-  - Add GitHub Issue creation on major failures (fewer than 5 pages extracted)
+  - Add robots.txt fetch and compliance check before crawling
+  - Add rate limiting middleware (1-2 req/sec) to all HTTP calls
+  - Add de-duplication phase after inventory collection
+  - Add evidence tracking to all extraction phases
+  - Add schema validation gate before final commit
 ```
 
 ### MCP & Tool Requirements
+
 ```yaml
 capabilities:
-  - name: "web crawling and scraping"
-    primary_mcp: "firecrawl"
-    alternative_mcp: "puppeteer"
-    fallback: "Direct HTTP with requests + beautifulsoup4 (no JS rendering)"
+  - name: "web crawling"
+    primary_mcp: "Firecrawl"
+    alternative_mcp: "Puppeteer (for JS-heavy sites)"
+    fallback: "Direct HTTP with requests + BeautifulSoup"
     secret_name: "FIRECRAWL_API_KEY"
-    notes: "Firecrawl handles JS-rendered sites and returns clean markdown; fallback loses JS rendering but maintains basic scraping"
+    notes: "Firecrawl handles JS rendering and returns clean markdown. Fallback loses JS content but maintains basic functionality."
 
-  - name: "LLM for semantic scoring and synthesis"
-    primary_mcp: "anthropic"
-    alternative_mcp: "none"
-    fallback: "Heuristic-only ranking (no semantic component), synthesis via templates"
+  - name: "web scraping (single page)"
+    primary_mcp: "Firecrawl"
+    alternative_mcp: "Fetch MCP"
+    fallback: "Python requests library"
+    secret_name: "FIRECRAWL_API_KEY"
+    notes: "Firecrawl preferred for consistent formatting. HTTP fallback for simple pages."
+
+  - name: "structured data extraction"
+    primary_mcp: "Anthropic (Claude)"
+    alternative_mcp: "None"
+    fallback: "Regex + heuristics (limited accuracy)"
     secret_name: "ANTHROPIC_API_KEY"
-    notes: "Used for lightweight semantic scoring on titles/headings and synthesis of findings; can run without LLM using heuristics only"
+    notes: "LLM extraction is core to this system. Fallback to regex only for simple fields (email, phone)."
 
-  - name: "GitHub issue creation on failure"
-    primary_mcp: "github"
-    alternative_mcp: "none"
-    fallback: "gh CLI or direct GitHub REST API via requests"
+  - name: "GitHub operations"
+    primary_mcp: "GitHub MCP"
+    alternative_mcp: "None"
+    fallback: "gh CLI or direct REST API"
     secret_name: "GITHUB_TOKEN"
-    notes: "Used to open issues when fewer than 5 pages are extracted successfully"
+    notes: "Issue creation and commits. MCP preferred for simplicity."
+
+  - name: "file operations"
+    primary_mcp: "Filesystem MCP"
+    alternative_mcp: "None"
+    fallback: "Python pathlib (stdlib)"
+    secret_name: "None"
+    notes: "Local file I/O for JSON and markdown outputs."
 ```
 
 ### Known Gotchas & Constraints
+
 ```
-# CRITICAL: Firecrawl API has rate limits — check response headers for X-RateLimit-* values
-# CRITICAL: robots.txt MUST be fetched FIRST before any crawling — use requests.get(f"https://{domain}/robots.txt")
-# CRITICAL: URL canonicalization is critical for de-duplication:
-#   - Lowercase scheme and host (https://Example.com → https://example.com)
-#   - Remove trailing slashes EXCEPT for domain root (example.com/ → example.com, example.com/page/ → example.com/page)
-#   - Strip UTM params and tracking params (utm_*, fbclid, gclid, ref, etc.)
-#   - Normalize path segments (remove /../, /./, etc.)
-# CRITICAL: Content hashing for de-duplication — hash the visible text content (not HTML) to detect near-identical pages
-# CRITICAL: Header/footer boilerplate appears on every page — must strip before hashing to avoid false duplicates
-# CRITICAL: Secrets are NEVER hardcoded — always use GitHub Secrets or .env
-# CRITICAL: Every tool must have try/except, logging, type hints, and a main() function
-# CRITICAL: Evidence validation is MANDATORY — synthesized_findings must reference evidence_index entries
-# CRITICAL: Rate limiting is MANDATORY — add delays between requests, respect 429 responses, implement exponential backoff
-# CRITICAL: Page inventory must attempt discovery of: home, about, offers, pricing, faq, contact, policies, privacy, terms, blog
-# CRITICAL: If fewer than 5 pages are extracted successfully, open a GitHub Issue with failure summary AND still commit partial output
-# CRITICAL: Firecrawl crawl mode returns markdown — use this for inventory; Firecrawl scrape mode returns structured data — use for deep extract
+# CRITICAL: Firecrawl API has rate limit of 10 concurrent requests. Enforce max_concurrency=5 to stay safe.
+# CRITICAL: Firecrawl crawl endpoint can take 60-300 seconds for large sites. Set timeout to 600s minimum.
+# CRITICAL: robots.txt MUST be fetched first. If disallowed path is crawled, respect and skip with warning.
+# CRITICAL: Many sites use canonical link tags — ALWAYS extract and use for de-duplication.
+# CRITICAL: Header/footer boilerplate detection: If content similarity > 80% across 5+ pages, flag as boilerplate.
+# CRITICAL: Evidence tracking: Every extracted field MUST have a list of evidence IDs. No unsourced claims.
+# CRITICAL: Evidence excerpts should be 50-150 chars — long enough to verify, short enough to read.
+# CRITICAL: URL normalization: Strip query params (except pagination), lowercase domain, trailing slash normalization.
+# CRITICAL: Authentication/paywall detection: If page returns login prompt or paywall notice, mark as inaccessible but include in inventory.
+# CRITICAL: Secrets are NEVER hardcoded — always use GitHub Secrets or .env.
+# CRITICAL: Every tool must have try/except, logging, type hints, and a main() function.
 ```
 
 ---
@@ -272,130 +343,138 @@ capabilities:
 ## System Design
 
 ### Subagent Architecture
-[Define the specialist subagents this system needs. One subagent per major capability or workflow phase.]
 
 ```yaml
 subagents:
-  - name: "crawler-specialist"
-    description: "Delegate when: Need to fetch robots.txt, crawl a domain, build page inventory, or handle crawl failures. This subagent handles all website fetching and inventory construction."
-    tools: "Read, Bash, Write"
-    model: "sonnet"
-    permissionMode: "default"
-    responsibilities:
-      - "Fetch and parse robots.txt from target domain"
-      - "Crawl domain via Firecrawl API (or fallback to HTTP + BeautifulSoup)"
-      - "Build page inventory with URLs, titles, discovered_from metadata"
-      - "Check HTTP status codes and note accessibility issues"
-      - "Handle crawl failures and implement fallback strategies"
-      - "Respect robots.txt disallow rules and note compliance in output"
-      - "Apply rate limiting (1-2 req/sec) and exponential backoff on errors"
-    inputs: "domain string, max_pages integer, rate_limit_rps float"
-    outputs: "inventory.json with array of {url, canonical_url, title, discovered_from, http_status, content_hash, notes}"
-
   - name: "relevance-ranker-specialist"
-    description: "Delegate when: Need to rank pages by relevance, apply heuristics, or perform semantic scoring. This subagent prioritizes which pages are most valuable for deep extraction."
-    tools: "Read, Bash, Write"
+    description: "Delegate when you need to rank/prioritize pages by relevance to business intelligence needs. Called after inventory collection."
+    tools: "Read, Write, Bash"
     model: "sonnet"
     permissionMode: "default"
     responsibilities:
-      - "Load inventory.json from crawler-specialist"
-      - "Apply path-based heuristics (keywords like /pricing, /faq, /about, /terms)"
-      - "Perform lightweight semantic scoring on titles, headings, first N chars (if ANTHROPIC_API_KEY available)"
-      - "Assign relevance scores and categories (offers/pricing, policies, about, faq, contact, blog, other)"
-      - "De-duplicate URLs (canonicalize, cluster near-identical pages, keep best representative)"
-      - "Output ranked list with scores, reasons, and categories"
-    inputs: "inventory.json from crawler-specialist"
-    outputs: "ranked_pages.json with array of {url, canonical_url, rank, reasons: [string], category: string}"
+      - "Analyze page URLs, titles, and first 500 chars of content"
+      - "Apply path keyword scoring (pricing, faq, about, contact, terms, privacy, careers)"
+      - "Apply lightweight semantic scoring on titles and headings"
+      - "Assign priority categories: offers_and_pricing (highest), how_it_works, policies, testimonials, about, faq, contact, blog (lowest)"
+      - "Return ranked list with scores and category tags"
+    inputs: "inventory.json (all discovered pages)"
+    outputs: "ranked_pages.json (sorted by relevance with category tags)"
 
   - name: "deep-extract-specialist"
-    description: "Delegate when: Need to deep-scrape top K pages and extract structured business data. This subagent performs detailed content extraction with evidence capture."
-    tools: "Read, Bash, Write"
+    description: "Delegate when you need to extract structured business data from a page. Called for each of the top K ranked pages. Responsible for evidence tracking."
+    tools: "Read, Write, Bash"
     model: "sonnet"
     permissionMode: "default"
     responsibilities:
-      - "Load ranked_pages.json and select top K pages (default 10)"
-      - "Deep-scrape each page via Firecrawl scrape endpoint (or fallback to HTTP + BeautifulSoup)"
-      - "Extract structured fields: offers, pricing, guarantees, process_steps, faq, testimonials, contact_methods, policies, constraints"
-      - "Capture quoted evidence for each extracted claim (url + excerpt + page_title + extracted_at)"
-      - "Handle login/paywall pages gracefully (mark as inaccessible, log reason, continue)"
-      - "Output deep_extract.json with pages array"
-    inputs: "ranked_pages.json from relevance-ranker-specialist, top_k_deep_extract integer"
-    outputs: "deep_extract.json with {pages: [{url, extracted_at, extracted_entities, offers, pricing, how_it_works, faq, testimonials, policies, constraints}]}"
+      - "Deep-scrape a single page (full content via Firecrawl or HTTP fallback)"
+      - "Extract structured fields: company_name, product_names, audience, locations, contact_points, offers, pricing, how_it_works, faq, testimonials, policies"
+      - "For EVERY extracted field, capture quoted evidence (50-150 char excerpt) with URL and timestamp"
+      - "Assign unique evidence IDs (EV_001, EV_002, etc.)"
+      - "Mark pages requiring login or blocked by robots.txt as inaccessible"
+      - "Return structured page extraction JSON with evidence lists"
+    inputs: "Single page URL from ranked_pages.json"
+    outputs: "Structured extraction dict with evidence IDs"
 
   - name: "synthesis-validator-specialist"
-    description: "Delegate when: Need to synthesize findings into intelligence pack, validate evidence references, or run schema validation. This subagent produces the final deliverable."
-    tools: "Read, Bash, Write"
+    description: "Delegate when you need to synthesize all extractions into the final intelligence pack. Called after all deep extractions complete. Responsible for evidence index and schema validation."
+    tools: "Read, Write, Bash"
     model: "sonnet"
     permissionMode: "default"
     responsibilities:
-      - "Load inventory.json, ranked_pages.json, deep_extract.json"
-      - "Synthesize findings into structured JSON: positioning, offers_and_pricing, customer_journey, trust_signals, compliance_and_policies, unknowns_and_gaps"
-      - "Build evidence_index mapping evidence_id to {url, excerpt, page_title, extracted_at_iso}"
-      - "Validate that every claim in synthesized_findings has a reference in evidence_index"
-      - "Run JSON schema validation on final site_intelligence_pack.json"
-      - "Generate README.md (run report) with summary, key findings, robots compliance, issues encountered"
-      - "Output final site_intelligence_pack.json and README.md"
-      - "If fewer than 5 pages extracted, open GitHub Issue with failure summary and still commit partial output"
-    inputs: "inventory.json, ranked_pages.json, deep_extract.json"
-    outputs: "site_intelligence_pack.json (complete pack), README.md (human-readable report), optional GitHub Issue on major failure"
+      - "Read all deep extraction JSONs"
+      - "Build synthesized findings across 5 dimensions: positioning, offers_and_pricing, customer_journey, trust_signals, compliance_and_policies"
+      - "Every synthesized claim MUST reference evidence IDs"
+      - "Build evidence_index with EV_ID → {url, excerpt, page_title, extracted_at_iso}"
+      - "Identify unknowns and gaps (e.g., pricing not found, no testimonials)"
+      - "Run JSON schema validation on final output"
+      - "Generate human-readable README.md summary"
+    inputs: "deep_extract.json, ranked_pages.json, inventory.json"
+    outputs: "site_intelligence_pack.json, README.md"
 ```
 
 ### Agent Teams Analysis
+
 ```yaml
-# Apply the 3+ Independent Tasks Rule
 independent_tasks:
-  - "None — all tasks have sequential dependencies"
+  - "Deep-extract page 1 (top ranked)"
+  - "Deep-extract page 2"
+  - "Deep-extract page 3"
+  - "Deep-extract page 4"
+  - "Deep-extract page 5"
+  - "[...up to K pages]"
 
-independent_task_count: "0"
-recommendation: "Sequential execution"
+independent_task_count: "10-20 (configurable)"
+recommendation: "Use Agent Teams for deep extraction phase"
 rationale: |
-  The system has clear data dependencies between phases:
-  1. Crawler must complete before ranker (ranker needs inventory)
-  2. Ranker must complete before deep-extract (deep-extract needs ranked list)
-  3. Deep-extract must complete before synthesis (synthesis needs extracted data)
+  Deep extraction of K pages is perfectly parallelizable. Each page extraction:
+  - Takes 15-30 seconds per page (LLM call + scraping)
+  - Has no dependency on other pages
+  - Produces independent structured JSON
+  
+  Sequential: 10 pages × 20s = 200 seconds (3.3 minutes)
+  Parallel (Agent Teams): 10 pages / 5 teammates = ~40 seconds (5x speedup)
+  
+  Trade-off: Same token cost, faster wall time, more complex coordination.
 
-  For batch mode (multiple domains), each domain is technically independent, but we MUST process sequentially
-  to respect rate limits (1-2 req/sec across all domains). Parallel processing would violate rate limits and
-  trigger API blocks.
+team_lead_responsibilities:
+  - "Read ranked_pages.json and select top K pages for deep extraction"
+  - "Create task manifest: list of URLs to extract"
+  - "Spawn K teammates (or batch into groups of 5-10 for memory efficiency)"
+  - "Collect all extraction results"
+  - "Merge into deep_extract.json"
+  - "Delegate to synthesis-validator-specialist for final pack"
 
-  Therefore, Agent Teams is NOT recommended. Sequential execution is correct.
+teammates:
+  - name: "page-extractor-01"
+    task: "Deep-extract structured data from assigned page URL. Return JSON with evidence."
+    inputs: "Single page URL"
+    outputs: "Structured extraction dict"
 
-sequential_rationale: |
-  All tasks depend on previous output (inventory → ranked → deep_extract → synthesis).
-  Batch mode must be sequential to respect rate limits.
-  No parallelization benefit without violating rate limits.
+  - name: "page-extractor-02"
+    task: "Deep-extract structured data from assigned page URL. Return JSON with evidence."
+    inputs: "Single page URL"
+    outputs: "Structured extraction dict"
+
+  # [...repeat for K teammates]
+
+sequential_fallback: |
+  If Agent Teams fails (coordination error, memory limit, timeout):
+  - Fall back to sequential deep extraction
+  - Process pages one at a time with progress logging
+  - Same output format, just slower wall time
 ```
 
 ### GitHub Actions Triggers
+
 ```yaml
 triggers:
   - type: "workflow_dispatch"
-    config:
+    config: |
       inputs:
-        domain:
-          description: "Target domain to analyze (e.g., example.com)"
-          required: false
-        batch_csv_path:
-          description: "Path to CSV file with batch targets (default: inputs/targets.csv)"
-          required: false
-          default: "inputs/targets.csv"
+        target_domain:
+          description: 'Domain to analyze (e.g., stripe.com)'
+          required: true
         max_pages:
-          description: "Maximum pages to crawl per site"
+          description: 'Maximum pages to crawl'
           required: false
-          default: "200"
-        top_k_deep_extract:
-          description: "Number of top-ranked pages to deep extract"
+          default: '200'
+        deep_extract_count:
+          description: 'Number of top pages to deep-extract'
           required: false
-          default: "10"
-    description: "Manual trigger for single-domain analysis or batch mode (if domain is empty, batch mode is used)"
+          default: '15'
+        batch_mode:
+          description: 'Process all domains in inputs/targets.csv'
+          required: false
+          default: 'false'
+    description: "Manual trigger for single domain or batch processing"
 
   - type: "schedule"
-    config: "0 2 * * *  # Nightly at 2 AM UTC (optional — user can enable/disable)"
-    description: "Optional nightly batch run — processes inputs/targets.csv for ongoing monitoring"
+    config: "cron: '0 2 * * *'  # Daily at 2 AM UTC"
+    description: "Nightly batch processing of inputs/targets.csv (if batch_mode enabled)"
 
-  - type: "issues"
-    config: "opened with label 'site-analysis-request'"
-    description: "Agent HQ integration — opening an issue with label 'site-analysis-request' and body containing 'domain: example.com' triggers analysis"
+  - type: "repository_dispatch"
+    config: "event_type: 'site_intelligence_request'"
+    description: "External trigger via webhook (for integration with other systems)"
 ```
 
 ---
@@ -403,872 +482,613 @@ triggers:
 ## Implementation Blueprint
 
 ### Workflow Steps
-[Ordered list of workflow phases. Each step becomes a section in workflow.md.]
 
 ```yaml
 steps:
-  - name: "Input Validation and Mode Detection"
-    description: |
-      Determine execution mode (single-domain or batch). Validate inputs.
-      Single-domain mode: domain input is provided.
-      Batch mode: domain input is empty, batch_csv_path points to CSV file.
-    subagent: "none (main agent)"
+  - name: "Initialize"
+    description: "Parse inputs, validate domain, create output directory structure"
+    subagent: "main agent"
     tools: []
-    inputs: "domain (optional string), batch_csv_path (optional string)"
-    outputs: "mode (single | batch), targets list (single domain or list from CSV)"
-    failure_mode: "Invalid domain format, CSV file missing or malformed"
-    fallback: "Halt with clear error message — invalid inputs cannot proceed"
+    inputs: "workflow_dispatch inputs or inputs/targets.csv"
+    outputs: "Validated domain, output_dir path, config dict"
+    failure_mode: "Invalid domain format or missing inputs"
+    fallback: "Log error, skip domain, continue with next (batch mode) or halt (single mode)"
 
-  - name: "Robots.txt Fetch and Compliance Check"
-    description: |
-      For each target domain, fetch https://{domain}/robots.txt and parse.
-      Identify disallowed paths for User-agent: *.
-      Note compliance in run metadata.
-    subagent: "crawler-specialist"
+  - name: "Fetch robots.txt"
+    description: "Fetch and parse robots.txt for the target domain. Extract User-agent: * rules."
+    subagent: "main agent"
     tools: ["fetch_robots.py"]
-    inputs: "domain string"
-    outputs: "robots_info dict with {fetched_url, allowed_summary, disallowed_summary, raw_excerpt, disallowed_paths: [string]}"
+    inputs: "target_domain"
+    outputs: "robots_dict: {allowed_summary, disallowed_summary, raw_excerpt, disallowed_paths: [list]}"
     failure_mode: "robots.txt not found (404) or unreachable"
-    fallback: "Assume all paths allowed (note in output: 'robots.txt not found, proceeding with caution')"
+    fallback: "Assume all paths allowed, log warning, proceed with crawl"
 
-  - name: "Crawl and Inventory Discovery"
-    description: |
-      Crawl the domain via Firecrawl API (crawl mode) or fallback to HTTP + BeautifulSoup.
-      Build page inventory with URLs, titles, discovered_from, HTTP status.
-      Apply robots.txt disallow rules — skip disallowed paths.
-      Enforce max_pages limit (default 200).
-      Apply rate limiting (1-2 req/sec).
-      Attempt discovery of key pages: home, about, offers, pricing, faq, contact, policies, privacy, terms, blog.
-    subagent: "crawler-specialist"
-    tools: ["crawl_domain.py"]
-    inputs: "domain string, max_pages integer, rate_limit_rps float, robots_info dict (disallowed_paths)"
-    outputs: "inventory.json with array of {url, canonical_url, title, discovered_from, http_status, content_hash, notes}"
-    failure_mode: "Firecrawl API fails (rate limit, timeout, auth error)"
-    fallback: "Switch to direct HTTP + BeautifulSoup for basic crawling (note loss of JS rendering in output)"
+  - name: "Crawl site"
+    description: "Crawl the domain via Firecrawl API (or HTTP fallback). Respect robots.txt disallowed paths. Max 200 pages."
+    subagent: "main agent"
+    tools: ["firecrawl_crawl.py", "http_crawl_fallback.py"]
+    inputs: "target_domain, max_pages, disallowed_paths"
+    outputs: "raw_pages: [{url, title, content, status, discovered_from}]"
+    failure_mode: "Firecrawl rate limited, timeout, or API error"
+    fallback: "Retry with exponential backoff (3 attempts). If Firecrawl fails, fall back to HTTP crawl (loses JS content but maintains basic functionality). If < 5 pages retrieved, open GitHub Issue but continue with partial data."
 
-  - name: "URL Canonicalization and De-duplication"
-    description: |
-      For each page in inventory, canonicalize URL (lowercase host, strip utm params, normalize trailing slashes).
-      Hash visible text content (strip HTML, remove header/footer boilerplate).
-      Cluster pages with identical or near-identical content_hash.
-      Keep best representative from each cluster (prefer shorter URLs, non-query-string URLs).
-      Update inventory with canonical_url and dedup_cluster_id.
-    subagent: "relevance-ranker-specialist"
-    tools: ["deduplicate_urls.py"]
-    inputs: "inventory.json from crawler-specialist"
-    outputs: "inventory.json updated with canonical_url and dedup_cluster_id"
-    failure_mode: "Content hashing error or malformed URL"
-    fallback: "Skip de-duplication for problematic URLs, log warning, continue with duplicates"
+  - name: "Build inventory"
+    description: "Normalize URLs, extract canonical links, compute content hashes, detect duplicate clusters"
+    subagent: "main agent"
+    tools: ["build_inventory.py"]
+    inputs: "raw_pages"
+    outputs: "inventory.json: [{url, canonical_url, title, discovered_from, http_status, content_hash, dedup_cluster_id, notes}]"
+    failure_mode: "Parsing error on malformed URLs or canonical tags"
+    fallback: "Use original URL as canonical, log warning, continue"
 
-  - name: "Page Relevance Ranking"
-    description: |
-      Load inventory.json (post-deduplication).
-      Apply path-based heuristics: assign points for keywords in URL path (pricing=10, faq=8, about=7, contact=6, etc.).
-      Apply lightweight semantic scoring: extract title, h1-h3 headings, first 500 chars from each page.
-      Send to Claude for relevance scoring (0-10) based on business intelligence value (if ANTHROPIC_API_KEY available).
-      Combine heuristic + semantic scores (weighted).
-      Assign relevance category (offers/pricing, policies, about, faq, contact, blog, other).
-      Sort by score descending.
-      Output ranked list.
+  - name: "Rank pages"
+    description: "Score pages by relevance using path keywords, titles, and lightweight semantic analysis"
     subagent: "relevance-ranker-specialist"
     tools: ["rank_pages.py"]
-    inputs: "inventory.json from crawler-specialist"
-    outputs: "ranked_pages.json with array of {url, canonical_url, rank, reasons: [string], category: string}"
-    failure_mode: "Semantic scoring fails (Claude API error or no ANTHROPIC_API_KEY)"
-    fallback: "Use heuristic-only scoring (path keywords), skip semantic component, log warning"
+    inputs: "inventory.json"
+    outputs: "ranked_pages.json: [{url, canonical_url, rank, reasons: [list], category}]"
+    failure_mode: "Scoring algorithm error or missing required fields"
+    fallback: "Assign default score based on path only, log warning, continue"
 
-  - name: "Deep Extract Structured Data"
-    description: |
-      Load ranked_pages.json and select top K pages (default 10).
-      For each page, deep-scrape via Firecrawl scrape endpoint (structured mode) or fallback to HTTP + BeautifulSoup.
-      Extract structured fields: offers, pricing, guarantees, process_steps, faq, testimonials, contact_methods, policies, constraints.
-      Capture quoted evidence for each extracted claim (url + excerpt + page_title + extracted_at_iso).
-      Handle login/paywall pages: mark as inaccessible with reason, skip extraction, continue with remaining pages.
-      Apply rate limiting (1-2 req/sec).
-      Output deep_extract.json with pages array.
-    subagent: "deep-extract-specialist"
-    tools: ["deep_extract.py"]
-    inputs: "ranked_pages.json from relevance-ranker-specialist, top_k_deep_extract integer"
-    outputs: "deep_extract.json with {pages: [{url, extracted_at, extracted_entities, offers, pricing, how_it_works, faq, testimonials, policies, constraints}]}"
-    failure_mode: "Firecrawl API fails, page requires auth, page is 404 or 500"
-    fallback: "Skip failed pages, log errors, continue with remaining pages; if fewer than 5 pages succeed, flag for GitHub Issue"
+  - name: "Deep extract (Agent Teams)"
+    description: "Extract structured data from top K ranked pages in parallel using Agent Teams"
+    subagent: "deep-extract-specialist (team lead coordinates K teammates)"
+    tools: ["deep_extract_page.py"]
+    inputs: "ranked_pages.json (top K pages)"
+    outputs: "deep_extract.json: {pages: [{url, title, summary, extracted_entities, offers, pricing, how_it_works, faq, testimonials, policies, constraints}]}"
+    failure_mode: "Agent Teams coordination failure, timeout, or LLM API error"
+    fallback: "Fall back to sequential extraction (slower but reliable). If < 5 pages extracted, open GitHub Issue but commit partial results."
 
-  - name: "Synthesize Intelligence Pack"
-    description: |
-      Load inventory.json, ranked_pages.json, deep_extract.json.
-      Synthesize findings into structured JSON sections:
-        - positioning: What the company does, target market, value proposition
-        - offers_and_pricing: Product/service offerings, pricing models, plans
-        - customer_journey: How customers engage (signup, onboarding, usage, support)
-        - trust_signals: Testimonials, case studies, guarantees, certifications
-        - compliance_and_policies: Privacy policy, terms of service, data handling, refund policy
-        - unknowns_and_gaps: What couldn't be determined from accessible pages
-      Build evidence_index: map evidence_id to {url, excerpt, page_title, extracted_at_iso}.
-      Ensure every claim in synthesized_findings references evidence_index.
-      Populate run_metadata: crawl statistics (pages_crawled, pages_ranked, pages_extracted, errors).
-      Assemble final site_intelligence_pack.json.
+  - name: "Synthesize and validate"
+    description: "Build final intelligence pack with synthesized findings, evidence index, and schema validation"
     subagent: "synthesis-validator-specialist"
-    tools: ["synthesize_pack.py"]
+    tools: ["synthesize_findings.py", "validate_schema.py", "generate_readme.py"]
     inputs: "inventory.json, ranked_pages.json, deep_extract.json"
-    outputs: "site_intelligence_pack.json (complete pack with all sections)"
-    failure_mode: "Missing evidence references, schema validation failure"
-    fallback: "Flag claims without evidence as [needs verification], note in unknowns_and_gaps section, continue"
+    outputs: "site_intelligence_pack.json, README.md"
+    failure_mode: "Schema validation failure or evidence mapping error"
+    fallback: "Log validation errors, commit output with warnings, open GitHub Issue for manual review"
 
-  - name: "Evidence Validation"
-    description: |
-      Load site_intelligence_pack.json.
-      Validate that every claim in synthesized_findings has a corresponding evidence_index entry.
-      Check that evidence_index entries have all required fields (url, excerpt, extracted_at_iso).
-      Run JSON schema validation on the full pack.
-      Log any validation errors.
-    subagent: "synthesis-validator-specialist"
-    tools: ["validate_evidence.py"]
-    inputs: "site_intelligence_pack.json from synthesis step"
-    outputs: "validation_report dict with {passed: bool, errors: [string]}"
-    failure_mode: "Validation fails (missing evidence, malformed JSON)"
-    fallback: "Log validation errors in run_metadata, flag site_intelligence_pack as 'partial' or 'needs_review', still commit"
+  - name: "Commit outputs"
+    description: "Commit all JSON files and README to outputs/{domain}/{timestamp}/"
+    subagent: "main agent"
+    tools: ["git_commit_push.py"]
+    inputs: "All JSON files, README.md, output_dir"
+    outputs: "Git commit SHA, committed files list"
+    failure_mode: "Git push failure or merge conflict"
+    fallback: "Retry with rebase (3 attempts). If fails, log error and open GitHub Issue with outputs attached."
 
-  - name: "Generate Run Report (README.md)"
-    description: |
-      Generate human-readable summary report:
-        - Summary: domain, pages crawled, pages ranked, pages extracted, execution time
-        - Key Findings: high-level insights from synthesized_findings
-        - Robots.txt Compliance: summary of allowed/disallowed paths, compliance status
-        - Issues Encountered: any errors, inaccessible pages, validation warnings
-        - Output Files: links to inventory.json, ranked_pages.json, deep_extract.json, site_intelligence_pack.json
-      Write to README.md.
-    subagent: "synthesis-validator-specialist"
-    tools: ["generate_report.py"]
-    inputs: "site_intelligence_pack.json, validation_report"
-    outputs: "README.md (human-readable run report)"
-    failure_mode: "Template rendering error"
-    fallback: "Generate minimal README with raw JSON summary, log error"
-
-  - name: "Commit Outputs to Repository"
-    description: |
-      Stage output files: inventory.json, ranked_pages.json, deep_extract.json, site_intelligence_pack.json, README.md.
-      Commit to outputs/{domain}/ directory.
-      Use descriptive commit message: "Site intelligence pack for {domain} ({pages_crawled} pages crawled, {pages_extracted} extracted)"
-    subagent: "none (main agent)"
-    tools: ["git"]
-    inputs: "All output JSON and README.md files"
-    outputs: "Git commit with outputs in outputs/{domain}/"
-    failure_mode: "Git commit fails (merge conflict, permission error)"
-    fallback: "Retry commit with rebase, if still fails, log error and exit"
-
-  - name: "Open GitHub Issue on Major Failure (Conditional)"
-    description: |
-      If fewer than 5 pages were successfully extracted (from run_metadata), open a GitHub Issue:
-        - Title: "Site intelligence pack failure: {domain} (only {N} pages extracted)"
-        - Body: summary of errors, robots.txt status, inaccessible pages, suggested actions
-        - Labels: "site-analysis-failure", "needs-review"
-      Still commit partial output.
-    subagent: "synthesis-validator-specialist"
-    tools: ["create_github_issue.py"]
-    inputs: "run_metadata, validation_report, domain"
+  - name: "Report status"
+    description: "If critical failure (< 5 pages extracted), create GitHub Issue with diagnostics"
+    subagent: "main agent"
+    tools: ["github_create_issue.py"]
+    inputs: "run_metadata, error logs"
     outputs: "GitHub Issue URL (if created)"
-    failure_mode: "GitHub API fails (auth error, rate limit)"
-    fallback: "Log failure to open issue, continue (partial output is already committed)"
+    failure_mode: "GitHub API error"
+    fallback: "Log error to workflow logs, continue"
 ```
 
 ### Tool Specifications
-[For each tool the system needs. Reference library/tool_catalog.md for reusable patterns.]
 
 ```yaml
 tools:
   - name: "fetch_robots.py"
-    purpose: "Fetch and parse robots.txt from a domain, return allowed/disallowed paths for User-agent: *"
-    catalog_pattern: "rest_client (HTTP GET with fallback)"
+    purpose: "Fetch and parse robots.txt for a domain"
+    catalog_pattern: "rest_client (HTTP GET)"
     inputs:
-      - "domain: str — Target domain (e.g., 'example.com')"
-    outputs: "{fetched_url: str, allowed_summary: str, disallowed_summary: str, raw_excerpt: str, disallowed_paths: [str]}"
-    dependencies: ["requests", "robotparser (stdlib)"]
-    mcp_used: "none (direct HTTP)"
-    error_handling: "404 or timeout → return empty disallowed_paths list, note 'robots.txt not found' in summary"
+      - "domain: str — Domain to fetch robots.txt from (e.g., example.com)"
+    outputs: |
+      JSON: {
+        "fetched_url": "https://example.com/robots.txt",
+        "allowed_summary": "All paths allowed except /admin",
+        "disallowed_summary": "/admin, /private",
+        "disallowed_paths": ["/admin", "/private"],
+        "raw_excerpt": "User-agent: *\nDisallow: /admin"
+      }
+    dependencies: ["httpx"]
+    mcp_used: "Fetch MCP (optional)"
+    error_handling: "Return empty disallowed_paths list if 404 or timeout. Log warning."
 
-  - name: "crawl_domain.py"
-    purpose: "Crawl a domain via Firecrawl API (or fallback to HTTP + BeautifulSoup), return page inventory"
-    catalog_pattern: "firecrawl_scrape (crawl mode) with HTTP fallback"
+  - name: "firecrawl_crawl.py"
+    purpose: "Crawl a domain via Firecrawl API, respecting robots.txt and rate limits"
+    catalog_pattern: "firecrawl_scrape (crawl mode)"
     inputs:
-      - "domain: str — Target domain"
+      - "domain: str — Domain to crawl"
       - "max_pages: int — Maximum pages to crawl (default 200)"
-      - "rate_limit_rps: float — Rate limit in requests per second (default 1.5)"
-      - "disallowed_paths: [str] — List of disallowed URL paths from robots.txt"
-    outputs: "[{url, canonical_url, title, discovered_from, http_status, content_hash, notes}]"
-    dependencies: ["firecrawl-py", "requests", "beautifulsoup4", "hashlib"]
-    mcp_used: "firecrawl (primary)"
-    error_handling: "Firecrawl API error → fallback to requests + BeautifulSoup (no JS rendering); log fallback in notes; rate limit hit → exponential backoff"
+      - "disallowed_paths: list[str] — Paths to skip from robots.txt"
+    outputs: |
+      JSON: [
+        {
+          "url": "https://example.com/page",
+          "title": "Page Title",
+          "content": "markdown content...",
+          "status": 200,
+          "discovered_from": "sitemap"
+        }
+      ]
+    dependencies: ["httpx", "firecrawl-py"]
+    mcp_used: "Firecrawl"
+    error_handling: "Retry with exponential backoff (3 attempts, 2s/4s/8s). Log error and return partial results. Raise exception if 0 pages returned."
 
-  - name: "deduplicate_urls.py"
-    purpose: "Canonicalize URLs and de-duplicate near-identical pages by content hash"
-    catalog_pattern: "dedup (from tool_catalog.md) with URL normalization"
+  - name: "http_crawl_fallback.py"
+    purpose: "Fallback crawler using direct HTTP requests (no JS rendering)"
+    catalog_pattern: "rest_client + BeautifulSoup"
     inputs:
-      - "inventory: [{url, content_hash, ...}] — Page inventory from crawl"
-    outputs: "[{url, canonical_url, dedup_cluster_id, ...}] — Updated inventory with canonical URLs and cluster IDs"
-    dependencies: ["urllib.parse (stdlib)"]
+      - "domain: str — Domain to crawl"
+      - "max_pages: int — Maximum pages to crawl"
+      - "disallowed_paths: list[str] — Paths to skip"
+    outputs: "Same format as firecrawl_crawl.py (list of page dicts)"
+    dependencies: ["httpx", "beautifulsoup4"]
     mcp_used: "none"
-    error_handling: "Malformed URL → skip canonicalization for that URL, log warning, keep original URL"
+    error_handling: "Skip pages that return 4xx/5xx errors. Log skipped URLs. Return partial results."
+
+  - name: "build_inventory.py"
+    purpose: "Normalize URLs, detect canonical links, compute content hashes, identify duplicate clusters"
+    catalog_pattern: "transform_map + dedup"
+    inputs:
+      - "raw_pages: list[dict] — Raw pages from crawler"
+    outputs: |
+      JSON: [
+        {
+          "url": "https://example.com/page",
+          "canonical_url": "https://example.com/page",
+          "title": "Page Title",
+          "discovered_from": "sitemap",
+          "http_status": 200,
+          "content_hash": "sha256:abc123...",
+          "dedup_cluster_id": "cluster_001",
+          "notes": null
+        }
+      ]
+    dependencies: ["hashlib (stdlib)", "urllib.parse (stdlib)"]
+    mcp_used: "none"
+    error_handling: "If canonical link is malformed, use original URL. Log warning. Continue."
 
   - name: "rank_pages.py"
-    purpose: "Rank pages by relevance using path heuristics + semantic scoring (optional)"
-    catalog_pattern: "llm_prompt (for semantic scoring) + filter_sort"
+    purpose: "Score pages by relevance using path keywords, titles, and semantic analysis"
+    catalog_pattern: "filter_sort + custom scoring logic"
     inputs:
-      - "inventory: [{url, title, ...}] — Page inventory from deduplication"
-    outputs: "[{url, canonical_url, rank, reasons: [str], category: str}]"
-    dependencies: ["anthropic", "re (stdlib)"]
-    mcp_used: "anthropic (optional — for semantic scoring)"
-    error_handling: "Claude API error or no ANTHROPIC_API_KEY → use heuristic-only scoring, log warning"
+      - "inventory: list[dict] — All discovered pages"
+    outputs: |
+      JSON: [
+        {
+          "url": "https://example.com/pricing",
+          "canonical_url": "https://example.com/pricing",
+          "rank": 1,
+          "reasons": ["Path contains 'pricing'", "Title: 'Pricing Plans'"],
+          "category": "offers_and_pricing"
+        }
+      ]
+    dependencies: ["re (stdlib)"]
+    mcp_used: "none"
+    error_handling: "If scoring fails for a page, assign default score (50). Log warning. Continue."
 
-  - name: "deep_extract.py"
-    purpose: "Deep-scrape top K pages and extract structured business data with evidence capture"
-    catalog_pattern: "firecrawl_scrape (scrape mode with structured output) + structured_extract"
+  - name: "deep_extract_page.py"
+    purpose: "Extract structured business data from a single page with evidence tracking"
+    catalog_pattern: "structured_extract (LLM with JSON schema)"
     inputs:
-      - "ranked_pages: [{url, ...}] — Ranked pages from ranker"
-      - "top_k: int — Number of top pages to extract (default 10)"
-      - "rate_limit_rps: float — Rate limit in requests per second"
-    outputs: "{pages: [{url, extracted_at, extracted_entities, offers, pricing, how_it_works, faq, testimonials, policies, constraints}]}"
-    dependencies: ["firecrawl-py", "anthropic", "requests", "beautifulsoup4"]
-    mcp_used: "firecrawl (primary), anthropic (for extraction)"
-    error_handling: "Page requires auth/paywall → mark as inaccessible, log reason, skip extraction; Firecrawl API error → fallback to requests + BeautifulSoup; extraction fails → log error, continue with next page"
-
-  - name: "synthesize_pack.py"
-    purpose: "Synthesize intelligence pack from inventory, ranked pages, and deep extracts with evidence index"
-    catalog_pattern: "llm_prompt (for synthesis) + custom assembly logic"
-    inputs:
-      - "inventory: [{...}] — Full inventory"
-      - "ranked_pages: [{...}] — Ranked pages"
-      - "deep_extract: {pages: [...]} — Deep-extracted data"
-    outputs: "{site, inventory, ranked_pages, deep_extract_notes, synthesized_findings, evidence_index, run_metadata}"
+      - "url: str — Page URL to extract"
+      - "content: str — Page content (markdown or HTML)"
+    outputs: |
+      JSON: {
+        "url": "https://example.com/pricing",
+        "canonical_url": "https://example.com/pricing",
+        "title": "Pricing Plans",
+        "summary": "Three tiers: Starter, Pro, Enterprise",
+        "extracted_entities": {
+          "company_name": "Example Inc",
+          "product_names": ["Example Pro", "Example Enterprise"],
+          "audience": "SMB e-commerce merchants",
+          "locations": ["USA", "UK"],
+          "contact_points": ["support@example.com"]
+        },
+        "offers": [
+          {
+            "name": "Pro Plan",
+            "description": "Full-featured plan for growing teams",
+            "price": "$99/month",
+            "billing_terms": "Annual billing available at 20% discount",
+            "guarantees": "30-day money-back guarantee",
+            "evidence": ["EV_001", "EV_002"]
+          }
+        ],
+        "pricing": {
+          "model": "Tiered subscription",
+          "tiers": [
+            {"name": "Starter", "price": "$29/mo"},
+            {"name": "Pro", "price": "$99/mo"}
+          ],
+          "add_ons": [],
+          "evidence": ["EV_003"]
+        },
+        "how_it_works": {
+          "steps": ["Sign up", "Connect your store", "View analytics"],
+          "evidence": ["EV_004"]
+        },
+        "faq": [
+          {
+            "q": "What payment methods do you accept?",
+            "a": "Credit card, PayPal, and bank transfer",
+            "evidence": ["EV_005"]
+          }
+        ],
+        "testimonials": [
+          {
+            "quote": "Best analytics tool we've used",
+            "name": "John Doe",
+            "source_context": "CEO at ShopCo",
+            "evidence": ["EV_006"]
+          }
+        ],
+        "policies": {
+          "privacy": "GDPR compliant",
+          "terms": "Standard SaaS terms",
+          "refunds": "30-day money-back",
+          "shipping": "N/A (digital product)",
+          "cancellations": "Anytime, no penalty",
+          "evidence": ["EV_007", "EV_008"]
+        },
+        "constraints": {
+          "requires_login": false,
+          "blocked_by_robots": false
+        }
+      }
     dependencies: ["anthropic"]
-    mcp_used: "anthropic"
-    error_handling: "Missing evidence for claim → flag as [needs verification], note in unknowns_and_gaps"
+    mcp_used: "Anthropic (Claude)"
+    error_handling: "If LLM extraction fails after 3 retries, return empty structure with error note. Log error. Continue."
 
-  - name: "validate_evidence.py"
-    purpose: "Validate that all claims in synthesized_findings have evidence_index entries"
+  - name: "synthesize_findings.py"
+    purpose: "Build final intelligence pack with synthesized findings and evidence index"
+    catalog_pattern: "llm_prompt + structured output"
+    inputs:
+      - "inventory: list[dict]"
+      - "ranked_pages: list[dict]"
+      - "deep_extract: dict"
+    outputs: |
+      JSON: {
+        "site": {...},
+        "inventory": [...],
+        "ranked_pages": [...],
+        "deep_extract_notes": {...},
+        "synthesized_findings": {
+          "positioning": {
+            "claims": [
+              {
+                "id": "POS_001",
+                "claim": "Targets SMB e-commerce merchants",
+                "evidence": ["EV_015", "EV_022"]
+              }
+            ]
+          },
+          "offers_and_pricing": {...},
+          "customer_journey": {...},
+          "trust_signals": {...},
+          "compliance_and_policies": {...},
+          "unknowns_and_gaps": [...]
+        },
+        "evidence_index": {
+          "EV_001": {
+            "url": "https://example.com/pricing",
+            "excerpt": "Pro Plan: $99/month with unlimited users",
+            "page_title": "Pricing Plans",
+            "extracted_at_iso": "2026-02-14T14:35:12Z"
+          }
+        },
+        "run_metadata": {
+          "max_pages": 200,
+          "pages_crawled": 187,
+          "pages_extracted": 15,
+          "dedup_clusters": 23,
+          "blocked_count": 5,
+          "inaccessible_count": 3,
+          "errors": []
+        }
+      }
+    dependencies: ["anthropic"]
+    mcp_used: "Anthropic (Claude)"
+    error_handling: "If synthesis fails, return deep_extract data directly with error note. Log error."
+
+  - name: "validate_schema.py"
+    purpose: "Validate final JSON output against JSON Schema"
     catalog_pattern: "custom validation logic"
     inputs:
-      - "site_intelligence_pack: {...} — Full pack from synthesis"
-    outputs: "{passed: bool, errors: [str]}"
+      - "data: dict — site_intelligence_pack JSON"
+      - "schema: dict — JSON Schema definition"
+    outputs: |
+      JSON: {
+        "valid": true,
+        "errors": []
+      }
     dependencies: ["jsonschema"]
     mcp_used: "none"
-    error_handling: "Validation error → log errors, return passed=false, continue (validation report included in run_metadata)"
+    error_handling: "Log validation errors. Do not halt execution. Return error list for review."
 
-  - name: "generate_report.py"
-    purpose: "Generate human-readable README.md from intelligence pack"
-    catalog_pattern: "custom reporting logic with markdown formatting"
+  - name: "generate_readme.py"
+    purpose: "Generate human-readable README.md summary"
+    catalog_pattern: "llm_prompt (summarization)"
     inputs:
-      - "site_intelligence_pack: {...} — Full pack"
-      - "validation_report: {passed, errors} — Validation results"
-    outputs: "README.md (markdown string)"
-    dependencies: ["jinja2 (optional for templating)"]
-    mcp_used: "none"
-    error_handling: "Template rendering error → generate minimal README with JSON summary, log error"
+      - "site_intelligence_pack: dict"
+    outputs: "Markdown string"
+    dependencies: ["anthropic"]
+    mcp_used: "Anthropic (Claude)"
+    error_handling: "If LLM summarization fails, generate minimal README with metadata only."
 
-  - name: "create_github_issue.py"
-    purpose: "Open a GitHub Issue on major failure (fewer than 5 pages extracted)"
-    catalog_pattern: "github_create_issue (from tool_catalog.md)"
+  - name: "github_create_issue.py"
+    purpose: "Create GitHub Issue on critical failure"
+    catalog_pattern: "github_create_issue"
     inputs:
-      - "repo: str — GitHub repo (owner/repo)"
-      - "domain: str — Target domain"
-      - "run_metadata: {...} — Run statistics and errors"
-    outputs: "{issue_url: str}"
-    dependencies: ["requests"]
-    mcp_used: "github (or direct GitHub REST API)"
-    error_handling: "GitHub API error → log failure, continue (partial output already committed)"
+      - "repo: str — Repository (owner/repo)"
+      - "title: str — Issue title"
+      - "body: str — Issue body with diagnostics"
+      - "labels: list[str] — Issue labels"
+    outputs: |
+      JSON: {
+        "issue_number": 123,
+        "url": "https://github.com/owner/repo/issues/123"
+      }
+    dependencies: ["httpx"]
+    mcp_used: "GitHub MCP"
+    error_handling: "Log error if issue creation fails. Do not halt execution."
+
+  - name: "git_commit_push.py"
+    purpose: "Stage, commit, and push output files to repo"
+    catalog_pattern: "git_commit_push"
+    inputs:
+      - "files: list[str] — Files to commit"
+      - "message: str — Commit message"
+      - "branch: str — Target branch (default: main)"
+    outputs: |
+      JSON: {
+        "commit_sha": "abc123...",
+        "branch": "main",
+        "pushed": true
+      }
+    dependencies: ["subprocess (stdlib)"]
+    mcp_used: "Git MCP (optional)"
+    error_handling: "Retry with rebase on push failure (3 attempts). Log error if all retries fail."
 ```
 
 ### Per-Tool Pseudocode
+
 ```python
 # fetch_robots.py
 def main(domain: str) -> dict:
-    # PATTERN: rest_client with robotparser
-    # CRITICAL: Fetch https://{domain}/robots.txt BEFORE any crawling
-    import urllib.robotparser, requests
+    """Fetch and parse robots.txt for a domain."""
+    # PATTERN: REST client with fallback
+    # CRITICAL: Handle 404 gracefully — many sites don't have robots.txt
+    import httpx
     
-    robots_url = f"https://{domain}/robots.txt"
+    url = f"https://{domain}/robots.txt"
     try:
-        resp = requests.get(robots_url, timeout=10)
+        resp = httpx.get(url, timeout=10, follow_redirects=True)
+        if resp.status_code == 404:
+            return {
+                "fetched_url": url,
+                "allowed_summary": "All paths allowed (no robots.txt)",
+                "disallowed_summary": "None",
+                "disallowed_paths": [],
+                "raw_excerpt": ""
+            }
         resp.raise_for_status()
         raw_text = resp.text
-    except Exception as e:
-        # robots.txt not found — assume all paths allowed
+        
+        # Parse User-agent: * rules
+        disallowed = []
+        for line in raw_text.splitlines():
+            if line.strip().startswith("Disallow:"):
+                path = line.split(":", 1)[1].strip()
+                if path:
+                    disallowed.append(path)
+        
         return {
-            "fetched_url": robots_url,
-            "allowed_summary": "robots.txt not found, assuming all paths allowed",
-            "disallowed_summary": "None",
-            "raw_excerpt": "",
-            "disallowed_paths": [],
+            "fetched_url": url,
+            "allowed_summary": "All paths allowed" if not disallowed else "Restricted paths found",
+            "disallowed_summary": ", ".join(disallowed) if disallowed else "None",
+            "disallowed_paths": disallowed,
+            "raw_excerpt": raw_text[:500]
         }
-    
-    # Parse robots.txt
-    rp = urllib.robotparser.RobotFileParser()
-    rp.parse(raw_text.splitlines())
-    
-    # Extract disallowed paths for User-agent: *
-    disallowed_paths = [entry.path for entry in rp.entries if entry.useragents == ["*"] and not entry.allowance]
-    
-    return {
-        "fetched_url": robots_url,
-        "allowed_summary": "Most paths allowed" if len(disallowed_paths) < 10 else "Many paths disallowed",
-        "disallowed_summary": f"Disallowed: {', '.join(disallowed_paths[:5])}" if disallowed_paths else "None",
-        "raw_excerpt": raw_text[:500],
-        "disallowed_paths": disallowed_paths,
-    }
+    except Exception as e:
+        logging.warning(f"Failed to fetch robots.txt: {e}")
+        return {
+            "fetched_url": url,
+            "allowed_summary": "All paths allowed (fetch failed)",
+            "disallowed_summary": "Unknown",
+            "disallowed_paths": [],
+            "raw_excerpt": ""
+        }
 
-# crawl_domain.py
-def main(domain: str, max_pages: int, rate_limit_rps: float, disallowed_paths: list[str]) -> list[dict]:
-    # PATTERN: firecrawl_scrape with fallback to HTTP + BeautifulSoup
-    # CRITICAL: Respect rate_limit_rps — add sleep between requests
-    # CRITICAL: Skip URLs matching disallowed_paths from robots.txt
-    import os, time, hashlib
+# firecrawl_crawl.py
+def main(domain: str, max_pages: int = 200, disallowed_paths: list[str] = []) -> list[dict]:
+    """Crawl a domain via Firecrawl API with robots.txt compliance."""
+    # PATTERN: firecrawl_scrape (crawl mode)
+    # CRITICAL: Firecrawl can take 60-300s for large sites — set timeout to 600s
+    # CRITICAL: Enforce max_concurrency=5 to avoid Firecrawl rate limits
+    import os
     from firecrawl import FirecrawlApp
-    from urllib.parse import urlparse
+    from tenacity import retry, stop_after_attempt, wait_exponential
     
-    app = FirecrawlApp(api_key=os.environ.get("FIRECRAWL_API_KEY"))
-    base_url = f"https://{domain}"
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=2, min=2, max=8))
+    def _crawl():
+        app = FirecrawlApp(api_key=os.environ["FIRECRAWL_API_KEY"])
+        result = app.crawl_url(
+            f"https://{domain}",
+            params={
+                "limit": max_pages,
+                "scrapeOptions": {"formats": ["markdown"]},
+                "allowBackwardCrawling": False,
+                "maxDepth": 5
+            }
+        )
+        return result.get("data", [])
     
     try:
-        # Firecrawl crawl mode
-        result = app.crawl_url(base_url, params={
-            "limit": max_pages,
-            "scrapeOptions": {"formats": ["markdown"]},
-        })
-        pages = result.get("data", [])
+        pages = _crawl()
     except Exception as e:
-        # FALLBACK: Direct HTTP + BeautifulSoup (no JS rendering)
-        import requests
-        from bs4 import BeautifulSoup
-        
-        pages = []
-        visited = set()
-        queue = [base_url]
-        
-        while queue and len(pages) < max_pages:
-            url = queue.pop(0)
-            if url in visited:
-                continue
-            visited.add(url)
-            
-            # Check robots.txt disallow
-            path = urlparse(url).path
-            if any(path.startswith(disallow) for disallow in disallowed_paths):
-                continue  # Skip disallowed path
-            
-            try:
-                time.sleep(1.0 / rate_limit_rps)  # Rate limit
-                resp = requests.get(url, timeout=10)
-                resp.raise_for_status()
-                soup = BeautifulSoup(resp.text, "html.parser")
-                
-                # Extract title
-                title = soup.title.string if soup.title else "No title"
-                
-                # Extract visible text for content hash
-                visible_text = soup.get_text(separator=" ", strip=True)
-                content_hash = hashlib.md5(visible_text.encode()).hexdigest()
-                
-                pages.append({
-                    "url": url,
-                    "title": title,
-                    "http_status": resp.status_code,
-                    "content_hash": content_hash,
-                    "notes": "Crawled via HTTP fallback (no JS rendering)",
-                })
-                
-                # Extract links for further crawling
-                for link in soup.find_all("a", href=True):
-                    href = link["href"]
-                    if href.startswith("/"):
-                        href = f"https://{domain}{href}"
-                    if href.startswith(base_url):
-                        queue.append(href)
-            except Exception as crawl_err:
-                continue  # Skip failed pages
-        
-    # De-duplicate and return inventory
-    inventory = []
+        logging.error(f"Firecrawl crawl failed: {e}")
+        raise  # Trigger fallback in workflow
+    
+    # Filter out robots.txt disallowed paths
+    filtered_pages = []
     for page in pages:
-        url = page.get("url")
-        canonical_url = _canonicalize_url(url)  # Helper function for URL normalization
-        inventory.append({
-            "url": url,
-            "canonical_url": canonical_url,
-            "title": page.get("title", ""),
-            "discovered_from": "crawl",
-            "http_status": page.get("http_status", 200),
-            "content_hash": page.get("content_hash", ""),
-            "notes": page.get("notes", ""),
+        url_path = urlparse(page["url"]).path
+        if any(url_path.startswith(dis) for dis in disallowed_paths):
+            logging.info(f"Skipping disallowed path: {page['url']}")
+            continue
+        filtered_pages.append({
+            "url": page["url"],
+            "title": page.get("metadata", {}).get("title", ""),
+            "content": page.get("markdown", ""),
+            "status": page.get("statusCode", 200),
+            "discovered_from": "crawl"
         })
     
-    return inventory
+    return filtered_pages
 
-# deduplicate_urls.py
-def main(inventory: list[dict]) -> list[dict]:
-    # PATTERN: dedup with URL canonicalization
-    # CRITICAL: Canonicalize URLs (lowercase host, strip utm params, normalize trailing slashes)
-    from urllib.parse import urlparse, urlunparse, parse_qs, urlencode
-    
-    def canonicalize(url: str) -> str:
-        parsed = urlparse(url)
-        # Lowercase scheme and host
-        scheme = parsed.scheme.lower()
-        netloc = parsed.netloc.lower()
-        # Remove trailing slash EXCEPT for root
-        path = parsed.path.rstrip("/") if parsed.path != "/" else parsed.path
-        # Strip tracking params
-        query_params = parse_qs(parsed.query)
-        filtered_params = {k: v for k, v in query_params.items() if not k.startswith("utm_") and k not in ["fbclid", "gclid", "ref"]}
-        query = urlencode(filtered_params, doseq=True)
-        
-        return urlunparse((scheme, netloc, path, "", query, ""))
-    
-    # Cluster by content_hash
-    clusters = {}
-    for item in inventory:
-        content_hash = item.get("content_hash", "")
-        if not content_hash:
-            continue
-        if content_hash not in clusters:
-            clusters[content_hash] = []
-        clusters[content_hash].append(item)
-    
-    # Keep best representative from each cluster (prefer shorter URLs)
-    deduped = []
-    for cluster_id, items in clusters.items():
-        best = min(items, key=lambda x: len(x["url"]))  # Shortest URL
-        best["dedup_cluster_id"] = cluster_id
-        deduped.append(best)
-    
-    return deduped
-
-# rank_pages.py
-def main(inventory: list[dict]) -> list[dict]:
-    # PATTERN: llm_prompt (semantic scoring) + filter_sort (heuristic scoring)
-    # CRITICAL: Combine heuristic (path keywords) + semantic (Claude-based) scores
-    import os, re
-    from anthropic import Anthropic
-    
-    # Path-based heuristics
-    heuristic_keywords = {
-        "pricing": 10, "price": 10, "plans": 10, "buy": 9,
-        "faq": 8, "help": 7, "support": 7,
-        "about": 7, "company": 6, "team": 6,
-        "contact": 6, "careers": 5,
-        "blog": 4, "news": 4,
-        "terms": 5, "privacy": 5, "legal": 5,
-    }
-    
-    ranked = []
-    for item in inventory:
-        url = item["url"]
-        path = url.lower()
-        
-        # Heuristic score
-        heuristic_score = 0
-        matched_keywords = []
-        for keyword, points in heuristic_keywords.items():
-            if keyword in path:
-                heuristic_score += points
-                matched_keywords.append(keyword)
-        
-        # Semantic score (optional)
-        semantic_score = 0
-        if os.environ.get("ANTHROPIC_API_KEY"):
-            try:
-                client = Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
-                title = item.get("title", "")
-                prompt = f"Rate the business intelligence value of this webpage for competitive analysis (0-10):\nTitle: {title}\nURL: {url}"
-                msg = client.messages.create(
-                    model="claude-sonnet-4-20250514",
-                    max_tokens=50,
-                    messages=[{"role": "user", "content": prompt}]
-                )
-                semantic_score = float(msg.content[0].text.strip())
-            except Exception:
-                semantic_score = 0
-        
-        # Combined score (weighted: 60% heuristic, 40% semantic)
-        total_score = (heuristic_score * 0.6) + (semantic_score * 0.4)
-        
-        # Assign category
-        category = "other"
-        if any(kw in path for kw in ["pricing", "price", "plans", "buy"]):
-            category = "offers/pricing"
-        elif any(kw in path for kw in ["terms", "privacy", "legal", "policy"]):
-            category = "policies"
-        elif any(kw in path for kw in ["about", "company", "team"]):
-            category = "about"
-        elif any(kw in path for kw in ["faq", "help", "support"]):
-            category = "faq"
-        elif any(kw in path for kw in ["contact", "careers"]):
-            category = "contact"
-        elif any(kw in path for kw in ["blog", "news"]):
-            category = "blog"
-        
-        ranked.append({
-            "url": url,
-            "canonical_url": item["canonical_url"],
-            "rank": total_score,
-            "reasons": matched_keywords + ([f"semantic_score={semantic_score}"] if semantic_score > 0 else []),
-            "category": category,
-        })
-    
-    # Sort by rank descending
-    ranked.sort(key=lambda x: x["rank"], reverse=True)
-    
-    return ranked
-
-# deep_extract.py
-def main(ranked_pages: list[dict], top_k: int, rate_limit_rps: float) -> dict:
-    # PATTERN: firecrawl_scrape (scrape mode with structured output) + structured_extract
-    # CRITICAL: Capture evidence (url + excerpt + page_title) for each extracted claim
-    import os, time
-    from firecrawl import FirecrawlApp
-    from anthropic import Anthropic
-    
-    app = FirecrawlApp(api_key=os.environ.get("FIRECRAWL_API_KEY"))
-    client = Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
-    
-    top_pages = ranked_pages[:top_k]
-    extracted_pages = []
-    
-    for page in top_pages:
-        url = page["url"]
-        
-        try:
-            time.sleep(1.0 / rate_limit_rps)  # Rate limit
-            
-            # Fetch page via Firecrawl
-            result = app.scrape_url(url, params={"formats": ["markdown"]})
-            markdown = result.get("markdown", "")
-            title = result.get("metadata", {}).get("title", "No title")
-            
-            # Extract structured data via Claude
-            prompt = f"""Extract structured business intelligence from this webpage:
-Title: {title}
-URL: {url}
-
-Extract and return JSON with these fields:
-- offers: [list of products/services offered]
-- pricing: [pricing information with amounts and plans]
-- how_it_works: [process steps or workflow]
-- faq: [frequently asked questions with answers]
-- testimonials: [customer quotes or case studies]
-- policies: [refund/guarantee/privacy policy highlights]
-- constraints: [limitations, requirements, or restrictions]
-
-For each extracted item, include the exact quoted excerpt as evidence.
-
-Content:
-{markdown[:4000]}
-"""
-            
-            msg = client.messages.create(
-                model="claude-sonnet-4-20250514",
-                max_tokens=4096,
-                messages=[{"role": "user", "content": prompt}]
-            )
-            
-            import json
-            extracted_data = json.loads(msg.content[0].text)
-            
-            extracted_pages.append({
-                "url": url,
-                "extracted_at": time.time(),
-                "page_title": title,
-                **extracted_data,
-            })
-        
-        except Exception as e:
-            # Log error, skip this page, continue
-            print(f"Error extracting {url}: {e}")
-            continue
-    
-    return {"pages": extracted_pages}
-
-# synthesize_pack.py
-def main(inventory: list[dict], ranked_pages: list[dict], deep_extract: dict) -> dict:
-    # PATTERN: llm_prompt for synthesis + custom assembly
-    # CRITICAL: Build evidence_index mapping evidence_id to {url, excerpt, page_title, extracted_at_iso}
-    import os, time
+# deep_extract_page.py
+def main(url: str, content: str) -> dict:
+    """Extract structured data from a page with evidence tracking."""
+    # PATTERN: structured_extract (LLM with JSON schema)
+    # CRITICAL: Evidence excerpts must be 50-150 chars and directly quoted from content
+    import os, json
     from anthropic import Anthropic
     
     client = Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
     
-    # Synthesize findings via Claude
-    synthesis_prompt = f"""Synthesize business intelligence findings from the extracted data below into these sections:
-
-1. positioning: What the company does, target market, value proposition
-2. offers_and_pricing: Product/service offerings, pricing models, plans
-3. customer_journey: How customers engage (signup, onboarding, usage, support)
-4. trust_signals: Testimonials, case studies, guarantees, certifications
-5. compliance_and_policies: Privacy policy, terms of service, data handling, refund policy
-6. unknowns_and_gaps: What couldn't be determined from accessible pages
-
-Extracted data:
-{deep_extract}
-
-Return JSON with the above sections. For each claim, reference the source URL.
-"""
+    schema = {
+        "type": "object",
+        "properties": {
+            "summary": {"type": "string"},
+            "extracted_entities": {"type": "object"},
+            "offers": {"type": "array"},
+            "pricing": {"type": "object"},
+            # ... (full schema)
+        },
+        "required": ["summary"]
+    }
     
-    msg = client.messages.create(
-        model="claude-sonnet-4-20250514",
-        max_tokens=8192,
-        messages=[{"role": "user", "content": synthesis_prompt}]
-    )
+    system_prompt = f"""
+    Extract structured business intelligence from the page content.
     
-    import json
-    synthesized_findings = json.loads(msg.content[0].text)
+    CRITICAL RULES:
+    1. Every extracted field MUST have an "evidence" list with evidence IDs
+    2. Generate evidence IDs as EV_001, EV_002, etc.
+    3. Evidence excerpts MUST be 50-150 chars, directly quoted from content
+    4. If a field is not found, omit it or set to null (do not guess)
+    5. Mark pages requiring login or blocked by robots.txt in "constraints"
     
-    # Build evidence_index
-    evidence_index = {}
-    evidence_counter = 1
-    for page in deep_extract.get("pages", []):
-        url = page["url"]
-        title = page.get("page_title", "")
-        extracted_at = page.get("extracted_at", time.time())
+    Return ONLY valid JSON matching this schema:
+    {json.dumps(schema, indent=2)}
+    """
+    
+    try:
+        msg = client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=4096,
+            temperature=0.0,
+            system=system_prompt,
+            messages=[{"role": "user", "content": f"URL: {url}\n\nContent:\n{content[:50000]}"}]
+        )
         
-        # For each extracted field, create evidence entries
-        for field in ["offers", "pricing", "how_it_works", "faq", "testimonials", "policies"]:
-            items = page.get(field, [])
-            for item in items:
-                evidence_id = f"ev{evidence_counter}"
-                evidence_index[evidence_id] = {
-                    "url": url,
-                    "excerpt": str(item)[:200],  # Truncate excerpt to 200 chars
-                    "page_title": title,
-                    "extracted_at_iso": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(extracted_at)),
-                }
-                evidence_counter += 1
-    
-    # Assemble final pack
-    site_intelligence_pack = {
-        "site": {
-            "target_url": f"https://{inventory[0]['canonical_url'].split('/')[2]}",
-            "domain": inventory[0]["canonical_url"].split("/")[2],
-            "crawled_at_iso": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-            "robots": {},  # Populated from fetch_robots.py output
-        },
-        "inventory": inventory,
-        "ranked_pages": ranked_pages,
-        "deep_extract_notes": deep_extract,
-        "synthesized_findings": synthesized_findings,
-        "evidence_index": evidence_index,
-        "run_metadata": {
-            "pages_crawled": len(inventory),
-            "pages_ranked": len(ranked_pages),
-            "pages_extracted": len(deep_extract.get("pages", [])),
-            "errors": [],
-        },
-    }
-    
-    return site_intelligence_pack
-
-# validate_evidence.py
-def main(site_intelligence_pack: dict) -> dict:
-    # PATTERN: custom validation logic
-    # CRITICAL: Ensure every claim in synthesized_findings has evidence_index entry
-    
-    synthesized = site_intelligence_pack.get("synthesized_findings", {})
-    evidence_index = site_intelligence_pack.get("evidence_index", {})
-    
-    errors = []
-    
-    # Check that synthesized_findings sections exist
-    required_sections = ["positioning", "offers_and_pricing", "customer_journey", "trust_signals", "compliance_and_policies", "unknowns_and_gaps"]
-    for section in required_sections:
-        if section not in synthesized:
-            errors.append(f"Missing required section: {section}")
-    
-    # Check that evidence_index entries have required fields
-    for ev_id, ev_entry in evidence_index.items():
-        if "url" not in ev_entry:
-            errors.append(f"Evidence entry {ev_id} missing 'url' field")
-        if "excerpt" not in ev_entry:
-            errors.append(f"Evidence entry {ev_id} missing 'excerpt' field")
-        if "extracted_at_iso" not in ev_entry:
-            errors.append(f"Evidence entry {ev_id} missing 'extracted_at_iso' field")
-    
-    # TODO: Cross-check that synthesized claims reference evidence_index (more complex validation)
-    
-    return {
-        "passed": len(errors) == 0,
-        "errors": errors,
-    }
-
-# generate_report.py
-def main(site_intelligence_pack: dict, validation_report: dict) -> str:
-    # PATTERN: custom reporting with markdown formatting
-    
-    site = site_intelligence_pack.get("site", {})
-    run_metadata = site_intelligence_pack.get("run_metadata", {})
-    synthesized = site_intelligence_pack.get("synthesized_findings", {})
-    
-    report = f"""# Site Intelligence Pack: {site.get("domain", "Unknown")}
-
-## Summary
-- **Target URL**: {site.get("target_url", "N/A")}
-- **Crawled At**: {site.get("crawled_at_iso", "N/A")}
-- **Pages Crawled**: {run_metadata.get("pages_crawled", 0)}
-- **Pages Ranked**: {run_metadata.get("pages_ranked", 0)}
-- **Pages Extracted**: {run_metadata.get("pages_extracted", 0)}
-
-## Key Findings
-
-### Positioning
-{synthesized.get("positioning", "No data")}
-
-### Offers and Pricing
-{synthesized.get("offers_and_pricing", "No data")}
-
-### Customer Journey
-{synthesized.get("customer_journey", "No data")}
-
-### Trust Signals
-{synthesized.get("trust_signals", "No data")}
-
-### Compliance and Policies
-{synthesized.get("compliance_and_policies", "No data")}
-
-### Unknowns and Gaps
-{synthesized.get("unknowns_and_gaps", "No data")}
-
-## Robots.txt Compliance
-{site.get("robots", {}).get("allowed_summary", "N/A")}
-{site.get("robots", {}).get("disallowed_summary", "N/A")}
-
-## Issues Encountered
-{"; ".join(run_metadata.get("errors", [])) if run_metadata.get("errors") else "None"}
-
-## Validation Status
-{"✅ Passed" if validation_report.get("passed") else "❌ Failed"}
-{"; ".join(validation_report.get("errors", [])) if not validation_report.get("passed") else ""}
-
-## Output Files
-- `inventory.json` — Full page inventory
-- `ranked_pages.json` — Pages ranked by relevance
-- `deep_extract.json` — Deep-extracted structured data
-- `site_intelligence_pack.json` — Complete intelligence pack
-
----
-Generated by Site Intelligence Pack system
-"""
-    
-    return report
-
-# create_github_issue.py
-def main(repo: str, domain: str, run_metadata: dict) -> dict:
-    # PATTERN: github_create_issue
-    import os, requests
-    
-    pages_extracted = run_metadata.get("pages_extracted", 0)
-    
-    if pages_extracted >= 5:
-        return {"issue_url": ""}  # No issue needed
-    
-    errors = run_metadata.get("errors", [])
-    
-    title = f"Site intelligence pack failure: {domain} (only {pages_extracted} pages extracted)"
-    body = f"""## Summary
-The site intelligence pack for **{domain}** failed to extract sufficient data.
-
-**Pages extracted**: {pages_extracted} (threshold: 5)
-
-## Errors
-{chr(10).join(f"- {err}" for err in errors)}
-
-## Suggested Actions
-1. Check robots.txt compliance
-2. Review inaccessible pages (login/paywall)
-3. Check Firecrawl API rate limits
-4. Review partial output in `outputs/{domain}/`
-
----
-Auto-generated by Site Intelligence Pack system
-"""
-    
-    headers = {
-        "Authorization": f"token {os.environ['GITHUB_TOKEN']}",
-        "Accept": "application/vnd.github.v3+json",
-    }
-    
-    payload = {
-        "title": title,
-        "body": body,
-        "labels": ["site-analysis-failure", "needs-review"],
-    }
-    
-    resp = requests.post(
-        f"https://api.github.com/repos/{repo}/issues",
-        headers=headers,
-        json=payload,
-        timeout=15,
-    )
-    resp.raise_for_status()
-    
-    return {"issue_url": resp.json().get("html_url", "")}
+        raw = msg.content[0].text.strip()
+        if raw.startswith("```"):
+            raw = raw.split("\n", 1)[1].rsplit("```", 1)[0].strip()
+        
+        parsed = json.loads(raw)
+        parsed["url"] = url
+        return parsed
+        
+    except Exception as e:
+        logging.error(f"Extraction failed for {url}: {e}")
+        return {
+            "url": url,
+            "summary": f"Extraction failed: {e}",
+            "constraints": {"requires_login": False, "blocked_by_robots": False}
+        }
 ```
 
 ### Integration Points
+
 ```yaml
 SECRETS:
   - name: "FIRECRAWL_API_KEY"
-    purpose: "Firecrawl API authentication for web crawling and scraping"
+    purpose: "Firecrawl API authentication for crawling/scraping"
     required: true
 
   - name: "ANTHROPIC_API_KEY"
-    purpose: "Claude API for semantic scoring and synthesis"
+    purpose: "Claude API for structured data extraction and synthesis"
     required: true
 
   - name: "GITHUB_TOKEN"
-    purpose: "GitHub API for opening issues on failures"
+    purpose: "GitHub API for issue creation and commits"
     required: true
 
 ENVIRONMENT:
   - file: ".env.example"
     vars:
-      - "FIRECRAWL_API_KEY=your_firecrawl_api_key_here  # Required: Firecrawl API key"
-      - "ANTHROPIC_API_KEY=your_anthropic_api_key_here  # Required: Claude API key"
-      - "GITHUB_TOKEN=your_github_token_here  # Required: GitHub PAT for issue creation"
-      - "MAX_PAGES=200  # Optional: Maximum pages to crawl per site"
-      - "TOP_K_DEEP_EXTRACT=10  # Optional: Number of top-ranked pages to deep extract"
-      - "RATE_LIMIT_RPS=1.5  # Optional: Rate limit in requests per second"
+      - "FIRECRAWL_API_KEY=your_firecrawl_api_key_here  # Get from firecrawl.dev"
+      - "ANTHROPIC_API_KEY=your_anthropic_api_key_here  # Get from console.anthropic.com"
+      - "GITHUB_TOKEN=your_github_token_here  # Personal Access Token with repo scope"
 
 DEPENDENCIES:
   - file: "requirements.txt"
     packages:
-      - "firecrawl-py==1.0.0  # Firecrawl API client"
-      - "anthropic==0.40.0  # Claude API client"
-      - "requests==2.32.0  # HTTP client for fallback scraping and GitHub API"
-      - "beautifulsoup4==4.12.0  # HTML parsing for fallback scraping"
-      - "jsonschema==4.23.0  # JSON schema validation"
-      - "jinja2==3.1.4  # Optional: Template rendering for reports"
+      - "firecrawl-py>=1.0.0  # Firecrawl API client"
+      - "anthropic>=0.40.0  # Claude API client"
+      - "httpx>=0.27.0  # HTTP client with retry support"
+      - "beautifulsoup4>=4.12.0  # HTML parsing (fallback)"
+      - "jsonschema>=4.20.0  # JSON Schema validation"
+      - "tenacity>=8.2.0  # Retry logic"
+      - "python-dateutil>=2.8.0  # Date parsing"
 
 GITHUB_ACTIONS:
   - trigger: "workflow_dispatch"
     config: |
-      inputs:
-        domain:
-          description: 'Target domain to analyze (e.g., example.com)'
-          required: false
-        batch_csv_path:
-          description: 'Path to CSV file with batch targets (default: inputs/targets.csv)'
-          required: false
-          default: 'inputs/targets.csv'
-        max_pages:
-          description: 'Maximum pages to crawl per site'
-          required: false
-          default: '200'
-        top_k_deep_extract:
-          description: 'Number of top-ranked pages to deep extract'
-          required: false
-          default: '10'
-  
-  - trigger: "schedule"
-    config: "0 2 * * *  # Nightly at 2 AM UTC (optional)"
-  
-  - trigger: "issues"
-    config: "opened with label 'site-analysis-request'"
+      name: Site Intelligence Pack
+      on:
+        workflow_dispatch:
+          inputs:
+            target_domain:
+              description: 'Domain to analyze (e.g., stripe.com)'
+              required: true
+            max_pages:
+              description: 'Maximum pages to crawl'
+              required: false
+              default: '200'
+            deep_extract_count:
+              description: 'Number of top pages to deep-extract'
+              required: false
+              default: '15'
+            batch_mode:
+              description: 'Process all domains in inputs/targets.csv'
+              required: false
+              default: 'false'
+        schedule:
+          - cron: '0 2 * * *'  # Daily at 2 AM UTC
+      
+      jobs:
+        build-intelligence-pack:
+          runs-on: ubuntu-latest
+          timeout-minutes: 60
+          steps:
+            - uses: actions/checkout@v4
+            - uses: actions/setup-python@v5
+              with:
+                python-version: '3.12'
+            - run: pip install -r requirements.txt
+            - run: python workflow.py
+              env:
+                FIRECRAWL_API_KEY: ${{ secrets.FIRECRAWL_API_KEY }}
+                ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+                GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+                TARGET_DOMAIN: ${{ github.event.inputs.target_domain }}
+                MAX_PAGES: ${{ github.event.inputs.max_pages }}
+                DEEP_EXTRACT_COUNT: ${{ github.event.inputs.deep_extract_count }}
+                BATCH_MODE: ${{ github.event.inputs.batch_mode }}
+            - run: |
+                git config user.name "GitHub Actions"
+                git config user.email "actions@github.com"
+                git add outputs/
+                git commit -m "Add Site Intelligence Pack for ${{ github.event.inputs.target_domain }}"
+                git push
 ```
 
 ---
@@ -1276,201 +1096,236 @@ GITHUB_ACTIONS:
 ## Validation Loop
 
 ### Level 1: Syntax & Structure
+
 ```bash
 # Run FIRST — every tool must pass before proceeding to Level 2
 # AST parse — verify valid Python syntax
 python -c "import ast; ast.parse(open('tools/fetch_robots.py').read())"
-python -c "import ast; ast.parse(open('tools/crawl_domain.py').read())"
-python -c "import ast; ast.parse(open('tools/deduplicate_urls.py').read())"
+python -c "import ast; ast.parse(open('tools/firecrawl_crawl.py').read())"
+python -c "import ast; ast.parse(open('tools/build_inventory.py').read())"
 python -c "import ast; ast.parse(open('tools/rank_pages.py').read())"
-python -c "import ast; ast.parse(open('tools/deep_extract.py').read())"
-python -c "import ast; ast.parse(open('tools/synthesize_pack.py').read())"
-python -c "import ast; ast.parse(open('tools/validate_evidence.py').read())"
-python -c "import ast; ast.parse(open('tools/generate_report.py').read())"
-python -c "import ast; ast.parse(open('tools/create_github_issue.py').read())"
+python -c "import ast; ast.parse(open('tools/deep_extract_page.py').read())"
+python -c "import ast; ast.parse(open('tools/synthesize_findings.py').read())"
+python -c "import ast; ast.parse(open('tools/validate_schema.py').read())"
+python -c "import ast; ast.parse(open('tools/generate_readme.py').read())"
+python -c "import ast; ast.parse(open('tools/github_create_issue.py').read())"
 
 # Import check — verify no missing dependencies
-python -c "import importlib; importlib.import_module('tools.fetch_robots')"
-python -c "import importlib; importlib.import_module('tools.crawl_domain')"
-python -c "import importlib; importlib.import_module('tools.deduplicate_urls')"
-python -c "import importlib; importlib.import_module('tools.rank_pages')"
-python -c "import importlib; importlib.import_module('tools.deep_extract')"
-python -c "import importlib; importlib.import_module('tools.synthesize_pack')"
-python -c "import importlib; importlib.import_module('tools.validate_evidence')"
-python -c "import importlib; importlib.import_module('tools.generate_report')"
-python -c "import importlib; importlib.import_module('tools.create_github_issue')"
+python -c "from tools import fetch_robots"
+python -c "from tools import firecrawl_crawl"
+python -c "from tools import build_inventory"
+python -c "from tools import rank_pages"
+python -c "from tools import deep_extract_page"
+python -c "from tools import synthesize_findings"
+python -c "from tools import validate_schema"
+python -c "from tools import generate_readme"
+python -c "from tools import github_create_issue"
 
-# Structure check — verify main() exists
+# Structure check — verify main() exists in each tool
 python -c "from tools.fetch_robots import main; assert callable(main)"
-python -c "from tools.crawl_domain import main; assert callable(main)"
-python -c "from tools.deduplicate_urls import main; assert callable(main)"
+python -c "from tools.firecrawl_crawl import main; assert callable(main)"
+python -c "from tools.build_inventory import main; assert callable(main)"
 python -c "from tools.rank_pages import main; assert callable(main)"
-python -c "from tools.deep_extract import main; assert callable(main)"
-python -c "from tools.synthesize_pack import main; assert callable(main)"
-python -c "from tools.validate_evidence import main; assert callable(main)"
-python -c "from tools.generate_report import main; assert callable(main)"
-python -c "from tools.create_github_issue import main; assert callable(main)"
+python -c "from tools.deep_extract_page import main; assert callable(main)"
+python -c "from tools.synthesize_findings import main; assert callable(main)"
+python -c "from tools.validate_schema import main; assert callable(main)"
+python -c "from tools.generate_readme import main; assert callable(main)"
+python -c "from tools.github_create_issue import main; assert callable(main)"
 
 # Expected: All pass with no errors. If any fail, fix before proceeding.
 ```
 
 ### Level 2: Unit Tests
+
 ```bash
 # Run SECOND — each tool must produce correct output for sample inputs
-# Test each tool independently with mock/sample data
+# Test fetch_robots.py with a known domain
+python tools/fetch_robots.py --domain example.com > /tmp/robots_test.json
+python -c "
+import json
+data = json.load(open('/tmp/robots_test.json'))
+assert 'fetched_url' in data, 'Missing fetched_url'
+assert 'disallowed_paths' in data, 'Missing disallowed_paths'
+print('✓ fetch_robots.py unit test passed')
+"
 
-# Test fetch_robots
-python tools/fetch_robots.py --domain "example.com"
-# Expected output: JSON with fetched_url, allowed_summary, disallowed_summary, disallowed_paths
+# Test build_inventory.py with sample data
+echo '[{"url": "https://example.com/page1", "content": "test content"}]' > /tmp/raw_pages.json
+python tools/build_inventory.py --input /tmp/raw_pages.json > /tmp/inventory_test.json
+python -c "
+import json
+data = json.load(open('/tmp/inventory_test.json'))
+assert len(data) == 1, 'Expected 1 inventory item'
+assert 'canonical_url' in data[0], 'Missing canonical_url'
+assert 'content_hash' in data[0], 'Missing content_hash'
+print('✓ build_inventory.py unit test passed')
+"
 
-# Test crawl_domain (limited to 5 pages for testing)
-python tools/crawl_domain.py --domain "example.com" --max_pages 5 --rate_limit_rps 1.0 --disallowed_paths "[]"
-# Expected output: JSON array with URLs, titles, http_status, content_hash
+# Test rank_pages.py with sample inventory
+python tools/rank_pages.py --input /tmp/inventory_test.json > /tmp/ranked_test.json
+python -c "
+import json
+data = json.load(open('/tmp/ranked_test.json'))
+assert len(data) == 1, 'Expected 1 ranked page'
+assert 'rank' in data[0], 'Missing rank'
+assert 'category' in data[0], 'Missing category'
+print('✓ rank_pages.py unit test passed')
+"
 
-# Test deduplicate_urls
-echo '[{"url": "https://example.com/page", "content_hash": "abc123"}, {"url": "https://example.com/page?utm_source=test", "content_hash": "abc123"}]' > /tmp/inventory.json
-python tools/deduplicate_urls.py --inventory /tmp/inventory.json
-# Expected output: JSON array with 1 entry (deduped), canonical_url, dedup_cluster_id
-
-# Test rank_pages
-echo '[{"url": "https://example.com/pricing", "title": "Pricing Plans"}, {"url": "https://example.com/about", "title": "About Us"}]' > /tmp/inventory.json
-python tools/rank_pages.py --inventory /tmp/inventory.json
-# Expected output: JSON array with ranked pages, reasons, categories
-
-# Test deep_extract
-echo '[{"url": "https://example.com/pricing", "canonical_url": "https://example.com/pricing"}]' > /tmp/ranked.json
-python tools/deep_extract.py --ranked_pages /tmp/ranked.json --top_k 1 --rate_limit_rps 1.0
-# Expected output: JSON with pages array containing extracted fields
-
-# Test synthesize_pack
-python tools/synthesize_pack.py --inventory /tmp/inventory.json --ranked_pages /tmp/ranked.json --deep_extract /tmp/deep_extract.json
-# Expected output: Complete site_intelligence_pack.json
-
-# Test validate_evidence
-python tools/validate_evidence.py --site_intelligence_pack /tmp/site_intelligence_pack.json
-# Expected output: {passed: true/false, errors: [...]}
-
-# Test generate_report
-python tools/generate_report.py --site_intelligence_pack /tmp/site_intelligence_pack.json --validation_report /tmp/validation.json
-# Expected output: Markdown string (README.md content)
-
-# Test create_github_issue (dry-run mode with mock data)
-python tools/create_github_issue.py --repo "owner/repo" --domain "example.com" --run_metadata '{"pages_extracted": 2, "errors": ["Firecrawl API error"]}'
-# Expected output: {issue_url: "https://github.com/owner/repo/issues/123"} (if pages_extracted < 5)
+# Test validate_schema.py with sample pack
+echo '{"site": {"domain": "example.com"}, "inventory": [], "ranked_pages": []}' > /tmp/sample_pack.json
+python tools/validate_schema.py --input /tmp/sample_pack.json --schema tools/schema.json > /tmp/validation_test.json
+python -c "
+import json
+data = json.load(open('/tmp/validation_test.json'))
+assert 'valid' in data, 'Missing valid field'
+print('✓ validate_schema.py unit test passed')
+"
 
 # If any tool fails: Read the error, fix the root cause, re-run.
 # NEVER mock to make tests pass — fix the actual code.
 ```
 
 ### Level 3: Integration Tests
+
 ```bash
 # Run THIRD — verify tools work together as a pipeline
-# Simulate the full workflow with sample data
+# Simulate the full workflow with a sample domain (use a small, fast site)
 
 # Step 1: Fetch robots.txt
-python tools/fetch_robots.py --domain "example.com" > /tmp/robots.json
+python tools/fetch_robots.py --domain example.com > /tmp/robots.json
+echo "✓ Step 1: robots.txt fetched"
 
-# Step 2: Crawl domain (limited to 10 pages for testing)
-python tools/crawl_domain.py --domain "example.com" --max_pages 10 --rate_limit_rps 1.0 --disallowed_paths "$(jq -r '.disallowed_paths | @json' /tmp/robots.json)" > /tmp/inventory.json
+# Step 2: Crawl site (mock with a single page to avoid external dependencies)
+echo '[{"url": "https://example.com/pricing", "title": "Pricing", "content": "Our plans start at $10/month", "status": 200, "discovered_from": "mock"}]' > /tmp/crawl_result.json
+echo "✓ Step 2: crawl completed (mocked)"
 
-# Step 3: Deduplicate URLs
-python tools/deduplicate_urls.py --inventory /tmp/inventory.json > /tmp/inventory_deduped.json
+# Step 3: Build inventory
+python tools/build_inventory.py --input /tmp/crawl_result.json > /tmp/inventory.json
+echo "✓ Step 3: inventory built"
 
 # Step 4: Rank pages
-python tools/rank_pages.py --inventory /tmp/inventory_deduped.json > /tmp/ranked_pages.json
+python tools/rank_pages.py --input /tmp/inventory.json > /tmp/ranked.json
+echo "✓ Step 4: pages ranked"
 
-# Step 5: Deep extract top 3 pages
-python tools/deep_extract.py --ranked_pages /tmp/ranked_pages.json --top_k 3 --rate_limit_rps 1.0 > /tmp/deep_extract.json
+# Step 5: Deep extract (mock LLM call to avoid API cost)
+echo '{"url": "https://example.com/pricing", "summary": "Three pricing tiers", "offers": [{"name": "Basic", "price": "$10/mo", "evidence": ["EV_001"]}]}' > /tmp/deep_extract.json
+echo "✓ Step 5: deep extraction completed (mocked)"
 
-# Step 6: Synthesize intelligence pack
-python tools/synthesize_pack.py --inventory /tmp/inventory_deduped.json --ranked_pages /tmp/ranked_pages.json --deep_extract /tmp/deep_extract.json > /tmp/site_intelligence_pack.json
+# Step 6: Synthesize (mock LLM call)
+echo '{"site": {"domain": "example.com"}, "synthesized_findings": {"positioning": {"claims": []}}, "evidence_index": {"EV_001": {"url": "https://example.com/pricing", "excerpt": "Plans start at $10/month"}}}' > /tmp/site_pack.json
+echo "✓ Step 6: synthesis completed (mocked)"
 
-# Step 7: Validate evidence
-python tools/validate_evidence.py --site_intelligence_pack /tmp/site_intelligence_pack.json > /tmp/validation_report.json
-
-# Step 8: Generate README
-python tools/generate_report.py --site_intelligence_pack /tmp/site_intelligence_pack.json --validation_report /tmp/validation_report.json > /tmp/README.md
-
-# Verify final outputs
+# Step 7: Validate schema
+python tools/validate_schema.py --input /tmp/site_pack.json --schema tools/schema.json > /tmp/validation.json
 python -c "
 import json
-pack = json.load(open('/tmp/site_intelligence_pack.json'))
-assert 'site' in pack, 'Missing site section'
-assert 'inventory' in pack, 'Missing inventory'
-assert 'ranked_pages' in pack, 'Missing ranked_pages'
-assert 'deep_extract_notes' in pack, 'Missing deep_extract_notes'
-assert 'synthesized_findings' in pack, 'Missing synthesized_findings'
-assert 'evidence_index' in pack, 'Missing evidence_index'
-assert 'run_metadata' in pack, 'Missing run_metadata'
-print('✅ Integration test passed')
+data = json.load(open('/tmp/validation.json'))
+assert data['valid'] == True, 'Schema validation failed'
+print('✓ Step 7: schema validation passed')
 "
 
 # Verify workflow.md references match actual tool files
+grep -q "fetch_robots.py" workflow.md || (echo "✗ workflow.md missing fetch_robots.py reference" && exit 1)
+grep -q "firecrawl_crawl.py" workflow.md || (echo "✗ workflow.md missing firecrawl_crawl.py reference" && exit 1)
+grep -q "deep_extract_page.py" workflow.md || (echo "✗ workflow.md missing deep_extract_page.py reference" && exit 1)
+echo "✓ workflow.md references verified"
+
 # Verify CLAUDE.md documents all tools and subagents
+grep -q "relevance-ranker-specialist" CLAUDE.md || (echo "✗ CLAUDE.md missing relevance-ranker-specialist" && exit 1)
+grep -q "deep-extract-specialist" CLAUDE.md || (echo "✗ CLAUDE.md missing deep-extract-specialist" && exit 1)
+grep -q "synthesis-validator-specialist" CLAUDE.md || (echo "✗ CLAUDE.md missing synthesis-validator-specialist" && exit 1)
+echo "✓ CLAUDE.md subagent documentation verified"
+
 # Verify .github/workflows/ YAML is valid
+python -c "
+import yaml
+with open('.github/workflows/site-intelligence-pack.yml') as f:
+    yaml.safe_load(f)
+print('✓ GitHub Actions workflow YAML is valid')
+"
+
+echo ""
+echo "========================================="
+echo "✓ All integration tests passed"
+echo "========================================="
 ```
 
 ---
 
 ## Final Validation Checklist
+
 - [ ] All tools pass Level 1 (syntax, imports, structure)
 - [ ] All tools pass Level 2 (unit tests with sample data)
 - [ ] Pipeline passes Level 3 (integration test end-to-end)
 - [ ] workflow.md has failure modes and fallbacks for every step
 - [ ] CLAUDE.md documents all tools, subagents, MCPs, and secrets
-- [ ] .github/workflows/ has timeout-minutes and failure notifications
-- [ ] .env.example lists all required environment variables
-- [ ] .gitignore excludes .env, __pycache__/, credentials
+- [ ] .github/workflows/ has timeout-minutes (60) and failure notifications
+- [ ] .env.example lists all required environment variables (FIRECRAWL_API_KEY, ANTHROPIC_API_KEY, GITHUB_TOKEN)
+- [ ] .gitignore excludes .env, __pycache__/, outputs/ (except committed results)
 - [ ] README.md covers all three execution paths (CLI, Actions, Agent HQ)
 - [ ] No hardcoded secrets anywhere in the codebase
 - [ ] Subagent files have valid YAML frontmatter and specific system prompts
-- [ ] requirements.txt lists all Python dependencies
-- [ ] robots.txt compliance is enforced (fetch first, skip disallowed paths)
-- [ ] Evidence validation is implemented (all claims reference evidence_index)
-- [ ] De-duplication is implemented (URL canonicalization + content hashing)
-- [ ] Rate limiting is implemented (1-2 req/sec with exponential backoff)
-- [ ] GitHub Issue creation on major failure (fewer than 5 pages extracted)
-- [ ] Fallback chain is implemented (Firecrawl → HTTP + BeautifulSoup → partial output)
+- [ ] requirements.txt lists all Python dependencies with pinned versions
+- [ ] JSON Schema file (tools/schema.json) defines complete site_intelligence_pack structure
+- [ ] Evidence tracking verified: all claims in synthesized_findings reference evidence IDs
+- [ ] robots.txt compliance verified: disallowed paths are filtered from crawl results
+- [ ] Rate limiting verified: max 1-2 req/sec enforced with delays between requests
+- [ ] De-duplication verified: canonical URLs used, content hashes computed, clusters assigned
+- [ ] Failure recovery verified: GitHub Issue created when < 5 pages extracted
 
 ---
 
 ## Anti-Patterns to Avoid
+
 - Do not hardcode API keys, tokens, or credentials — use GitHub Secrets or .env
-- Do not use `git add -A` or `git add .` — stage only specific files
+- Do not use `git add -A` or `git add .` — stage only outputs/ directory
 - Do not skip validation because "it should work" — run all three levels
 - Do not catch bare `except:` — always catch specific exception types
 - Do not build tools that require interactive input — all tools must run unattended
-- Do not create MCP-dependent tools without HTTP/API fallbacks
+- Do not create MCP-dependent tools without HTTP/API fallbacks — Firecrawl failure must not halt the system
 - Do not design subagents that call other subagents — only the main agent delegates
-- Do not use Agent Teams when fewer than 3 independent tasks exist — the overhead is not justified
+- Do not use Agent Teams when fewer than 3 independent tasks exist — overhead is not justified
 - Do not commit .env files, credentials, or API keys to the repository
 - Do not ignore failing tests — fix the root cause, never mock to pass
 - Do not generate workflow steps without failure modes and fallback actions
 - Do not write tools without try/except, logging, type hints, and a main() function
-- Do not skip robots.txt compliance check — MUST fetch and parse robots.txt before any crawling
-- Do not proceed with crawling if robots.txt disallows it — respect the rules, note in output
-- Do not store evidence without url + excerpt + page_title + extracted_at — all evidence must be traceable
-- Do not synthesize findings without evidence validation — every claim must reference evidence_index
-- Do not skip de-duplication — URL canonicalization and content hashing are MANDATORY
-- Do not exceed rate limits — implement delays and exponential backoff
+- Do not extract data without evidence tracking — every claim needs quoted evidence
+- Do not ignore robots.txt — always fetch first and filter disallowed paths
+- Do not crawl without rate limiting — enforce 1-2 req/sec maximum
+- Do not skip de-duplication — canonical URLs and content hashing are required
+- Do not commit outputs without validation — run schema validation before committing
+- Do not let a single page failure halt the entire workflow — isolate errors and continue
+- Do not generate evidence excerpts longer than 150 chars — keep them readable
+- Do not create evidence IDs without a mapping in evidence_index — every ID must be resolvable
 
 ---
 
-## Confidence Score: 9/10
+## Confidence Score: 8/10
 
 **Score rationale:**
-- [System Architecture]: High confidence — subagent architecture is clear, workflow phases are well-defined, tools are scoped correctly — Confidence: high
-- [Technical Feasibility]: High confidence — all required MCPs and APIs are available (Firecrawl, Anthropic, GitHub), fallback strategies are defined, rate limiting is implementable — Confidence: high
-- [Validation Strategy]: High confidence — three-level validation (syntax, unit, integration) is comprehensive, test cases are specific, integration test covers full pipeline — Confidence: high
-- [Evidence & Compliance Requirements]: High confidence — robots.txt compliance is enforceable, evidence validation is well-specified, de-duplication logic is clear — Confidence: high
-- [Failure Modes & Fallbacks]: Medium-high confidence — fallback chains are defined (Firecrawl → HTTP), GitHub Issue creation on failure is specified, partial output handling is clear; uncertainty around edge cases (e.g., extremely large sites, rate limit exhaustion) — Confidence: medium-high
-- [Batch Mode Scalability]: Medium confidence — sequential processing respects rate limits but may be slow for large batches (200 domains * 200 pages * 1.5 RPS = ~27,000 seconds = 7.5 hours); recommendation: batch processing is feasible but slow, may need chunking for very large batches — Confidence: medium
+
+- **Firecrawl integration**: High confidence. Firecrawl API is well-documented, and fallback to HTTP scraping is straightforward. Confidence: **high**
+- **LLM-based extraction**: Medium-high confidence. Structured extraction with JSON schema is proven, but quality depends on prompt engineering. Evidence tracking adds complexity but is manageable with clear instructions. Confidence: **medium-high**
+- **robots.txt compliance**: High confidence. Parsing robots.txt is straightforward, and filtering logic is simple. Confidence: **high**
+- **Rate limiting**: High confidence. Simple sleep-based rate limiting is reliable and easy to implement. Confidence: **high**
+- **Agent Teams parallelization**: Medium confidence. Parallel extraction is ideal for Agent Teams, but coordination overhead may introduce edge cases. Sequential fallback is critical. Confidence: **medium**
+- **Evidence tracking**: Medium confidence. Mapping every claim to evidence is conceptually clear but requires careful LLM prompt design and validation. Risk of missing evidence IDs if LLM doesn't follow instructions perfectly. Confidence: **medium**
+- **De-duplication**: High confidence. Canonical URL extraction and content hashing are standard techniques. Confidence: **high**
+- **Schema validation**: High confidence. JSON Schema validation is straightforward with `jsonschema` library. Confidence: **high**
+- **GitHub Issue creation on failure**: High confidence. Simple GitHub API call with clear failure thresholds. Confidence: **high**
 
 **Ambiguity flags** (areas requiring clarification before building):
-- [ ] **Batch processing scale**: If inputs/targets.csv has 200+ domains, the nightly job may exceed reasonable runtime (7+ hours). Should we implement chunking (e.g., process 20 domains per run, rotate through the list)? Or is sequential processing acceptable for the expected batch sizes?
-- [ ] **Semantic scoring model**: For lightweight semantic scoring (titles/headings/first N chars), should we use Claude Sonnet 4 (more accurate but slower/costlier) or Claude Haiku (faster/cheaper but less nuanced)? Or make it configurable?
 
-**If any ambiguity flag is checked, DO NOT proceed to build. Ask the user to clarify first.**
+- [ ] **Deep extract count (K)**: Default is 15, but optimal value depends on site size. Should this be auto-adjusted based on total page count? (e.g., top 10% of pages up to max 20)
+- [ ] **Evidence excerpt length**: Spec says 50-150 chars. Should this be enforced strictly (truncate), or is it a guideline for the LLM?
+- [ ] **Batch mode behavior**: If one domain fails in batch mode, should the workflow continue with remaining domains or halt? (Recommendation: continue and report failures)
+- [ ] **De-duplication strategy**: Should duplicate pages be completely removed from inventory, or kept with a cluster ID for reference? (Recommendation: keep with cluster ID)
+- [ ] **Rate limiting implementation**: Should rate limiting be per-domain or global across batch processing? (Recommendation: per-domain to maximize throughput)
+
+**Resolution**: These ambiguities are minor and can be resolved with reasonable defaults during build. No blocker to proceeding.
+
+**If any ambiguity flag above is critical, DO NOT proceed to build. Ask the user to clarify first.**
 
 ---
 
