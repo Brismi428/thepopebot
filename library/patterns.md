@@ -1205,3 +1205,192 @@ Often paired with:
 - Detect API changes, deprecation notices
 - Generate weekly engineering digest
 - Reduce surprise breaking changes
+
+## 14. Multi-Stage Content Generation with Quality Gates
+
+**Summary:** An AI-powered content generation pipeline that creates platform-optimized content (social media, marketing, etc.), runs multi-dimensional automated quality review, and either auto-publishes or generates manual content packs based on quality gates.
+
+### When to Use
+
+- Need to generate high-volume content while maintaining brand voice consistency
+- Content must pass compliance checks before publishing
+- Want automated quality assurance without sacrificing human oversight option
+- Publishing decision should depend on automated quality score
+- Platform-specific formatting and optimization required
+
+### Steps
+
+1. **Input Validation** -- Parse inputs (brand guidelines, theme, content plan), validate structure
+2. **Reference Research** -- Fetch source material from URLs for factual grounding
+3. **Strategy Generation** -- Create per-item content strategy with LLM analysis
+4. **Content Generation (Parallel or Sequential)** -- Generate all content items
+   - **If 3+ items**: Use Agent Teams for parallel generation (5x speedup)
+   - **If <3 items**: Generate sequentially
+5. **Multi-Dimensional Quality Review** -- Score across N dimensions (brand voice, compliance, format, claims)
+6. **Gate Decision** -- Deterministic logic: if quality >= threshold AND mode == auto: publish, else: manual pack
+7a. **Auto-Publish** -- Format for platform API, execute publish calls, handle rate limits/errors
+7b. **Manual Content Pack** -- Generate human-readable + machine-readable output, upload checklist
+8. **Archive & Index** -- Update rolling index, prune old archives, commit to repo
+9. **Notification** -- Post summary to issue/Slack with links to outputs
+
+### Key Tools / MCPs
+
+- **Anthropic MCP** -- Content generation, quality review, strategy
+- **Firecrawl MCP** -- Reference content extraction (with HTTP fallback)
+- **Platform API** -- Publishing integration (Instagram Graph API, LinkedIn, Twitter, etc.)
+- **Python** -- Tool orchestration, data transformation
+
+### GitHub Actions Trigger
+
+```yaml
+on:
+  schedule:
+    - cron: '0 9 * * 1'   # Weekly content generation
+  workflow_dispatch:
+    inputs:
+      theme: ...
+      content_plan: ...
+      publishing_mode: choice[auto_publish, content_pack_only]
+  issues:
+    types: [opened, labeled]  # Agent HQ pattern
+```
+
+### Example Use Cases
+
+- **Weekly Instagram Content:** Generate 7 posts (reels, carousels, singles) with captions, hashtags, creative briefs
+- **LinkedIn Thought Leadership:** Generate weekly posts with brand voice compliance
+- **Email Newsletter Sequences:** Generate multi-email outreach or nurture campaigns
+- **Blog Post Drafts:** Generate SEO-optimized blog posts with automated fact-checking
+- **Product Descriptions:** Generate e-commerce product descriptions at scale
+
+### Subagent Architecture (6 specialists)
+
+This pattern benefits from specialist subagents:
+
+- **strategist** -- Research + strategy generation
+- **copywriter** -- Text content generation
+- **hashtag-specialist** -- Platform-specific optimization (hashtags, keywords)
+- **creative-director** -- Visual content briefs, image prompts
+- **reviewer** -- Multi-dimensional quality scoring
+- **publisher** -- Platform API integration or manual pack generation
+
+**Key insight:** Subagents are the DEFAULT delegation mechanism. Each specialist has focused domain expertise and minimal tool access (principle of least privilege).
+
+### Agent Teams Parallelization
+
+**Apply the 3+ Independent Tasks Rule:**
+- If content_plan specifies 3+ items (e.g., 7 Instagram posts): Use Agent Teams
+- Each teammate generates ONE item independently
+- Team lead merges results, runs consistency check (no duplicate content)
+
+**Performance:**
+- Sequential: ~10-15 seconds per item × 7 items = 70-105 seconds
+- Parallel: ~12-18 seconds total (5x wall-time speedup, same token cost)
+
+**Fallback:** Always provide sequential execution path (identical output, slower wall time).
+
+### Multi-Dimensional Quality Review Pattern
+
+**Core concept:** Score content across N independent dimensions with configurable thresholds.
+
+**Typical dimensions:**
+1. **Brand Voice Alignment** (0-100) -- Tone, audience fit, style match
+2. **Compliance Checks** (0-100, must be 100) -- Banned topics, prohibited claims, approved CTAs
+3. **Platform Optimization** (0-100) -- Hashtag hygiene, character limits, format rules
+4. **Format Validation** (0-100) -- Character counts, required fields present
+5. **Claims Verification** (0-100, must be 100) -- Factual claims sourced from references
+
+**Scoring:**
+- Each dimension scored independently by LLM with structured JSON output
+- Overall score = average of all dimensions
+- Pass/fail logic: `overall >= 80 AND critical_dimensions == 100`
+
+**Benefits:**
+- Transparent quality assessment (human-readable breakdown)
+- Tunable per dimension (adjust thresholds for different content types)
+- Fails gracefully (manual pack if gates not met)
+
+### Gate Decision Pattern
+
+**Deterministic logic layer** between quality review and publishing:
+
+```
+IF quality.pass_fail == "PASS" AND mode == "auto_publish":
+  action = "publish"
+ELSE IF quality.pass_fail == "FAIL":
+  action = "manual_pack"
+  rationale = "Quality score below threshold or compliance issues"
+ELSE:  # mode == "content_pack_only"
+  action = "manual_pack"
+  rationale = "Manual review mode enabled"
+```
+
+**Key insight:** Separating gate logic from quality review keeps review neutral (just reports scores) and makes decision logic easy to modify.
+
+### Failure Handling
+
+**Progressive degradation:**
+- **Reference fetch failures** -- Continue with available references, flag if all fail
+- **LLM API failures** -- Retry once with exponential backoff, escalate if fails
+- **Quality gates not met** -- Generate manual content pack (fail-safe)
+- **Publishing failures** -- Fall back to manual pack for failed items, log details
+- **Rate limits** -- Pause, log next retry time, generate manual pack for remaining
+
+**Philosophy:** Partial success is acceptable. Manual intervention is always an option.
+
+### Output Structure
+
+**Dual-format outputs:**
+- **Markdown** -- Human-readable, ideal for review/approval
+- **JSON** -- Machine-readable, ideal for automation/integration
+- **Upload Checklist** -- Copy-paste ready instructions for manual publishing
+
+**Rolling archive:**
+- `latest.md` -- Always points to most recent output
+- Dated directories (YYYY-MM-DD) with full content packs
+- Configurable retention (default: 12 weeks)
+
+### Cost Optimization
+
+**Per run (7 items):**
+- LLM calls: Strategy (1) + Items (7) + Review (1) = 9 calls
+- Claude Sonnet 4: ~$0.08-0.12 per run
+- Platform API: Usually free (rate limits apply)
+- GitHub Actions: ~5-10 minutes (~$0.008, fits free tier)
+
+**Total: ~$0.10-0.15 per content pack**
+**Monthly (4 runs): ~$0.40-0.60**
+
+### Success Criteria
+
+✅ Generates complete content items with all required fields
+✅ Runs N-dimensional quality review
+✅ Auto-publishes when quality gates pass and mode enabled
+✅ Falls back to manual packs when needed
+✅ Outputs structured JSON + human-readable Markdown
+✅ Maintains rolling archive with latest index
+✅ System runs autonomously via GitHub Actions
+✅ All three execution paths work (CLI, Actions, Agent HQ)
+
+### Key Learnings (from weekly-instagram-content-publisher build)
+
+- **Subagent specialization reduces complexity** -- 6 focused subagents > 1 monolithic agent
+- **Quality gates prevent bad content** -- 3-check system (overall, compliance, claims) is effective
+- **Dual-format output is valuable** -- Markdown for humans, JSON for machines
+- **Firecrawl + HTTP fallback pattern works** -- Primary API with degraded fallback maximizes reliability
+- **Agent Teams scales content generation** -- 5x speedup for 7 posts with identical token cost
+- **Platform API error handling is critical** -- Rate limits, auth failures, media URL issues all need graceful degradation
+- **Rolling archive with retention** -- 12-week retention prevents repo bloat while maintaining history
+- **Three execution paths required** -- CLI (dev), Actions (prod), Agent HQ (user-driven) cover all use cases
+
+### Related Patterns
+
+Combines elements of:
+- **Generate > Review > Publish** (core flow)
+- **Fan-Out > Process > Merge** (Agent Teams parallelization)
+- **Sequential State Management** (rolling archive)
+- **Multi-Source Research** (reference extraction)
+
+Often paired with:
+- **Intake > Enrich > Deliver** (enrich with brand voice)
+- **Monitor > Detect > Alert** (quality score monitoring over time)
