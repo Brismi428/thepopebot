@@ -1690,3 +1690,290 @@ Often chained with:
 **Recommendation:** Start without enrichment. Add AI features only if needed.
 
 ---
+
+## 14. Deep Website Intelligence with Evidence Tracking
+
+**Summary:** A comprehensive website analysis system that crawls target domains, ranks pages by business intelligence relevance, extracts structured data from top pages with evidence tracking, and synthesizes findings into an audit-ready intelligence pack. Combines web scraping, AI extraction, evidence provenance, and Git-native storage.
+
+### When to Use
+
+- Need comprehensive business intelligence on competitors, prospects, or partners
+- Want every claim backed by quoted evidence with full provenance
+- Analyzing 50-200 pages per domain with deep extraction on top 10-20
+- Producing reports that require auditability (every finding traceable to source)
+- Replacing 4-8 hours of manual research with 5-10 minute automated workflow
+
+### Steps
+
+1. **Initialize** -- Parse inputs, validate domain, create timestamped output directory
+2. **Fetch robots.txt** -- Retrieve and parse disallowed paths
+3. **Crawl site** -- Firecrawl API (primary) or HTTP fallback, respect robots.txt
+4. **Build inventory** -- Normalize URLs, detect canonicals, compute content hashes, identify duplicate clusters
+5. **Rank pages** -- Delegate to `relevance-ranker-specialist` (path keywords + semantic scoring)
+6. **Deep extract** -- Delegate to `deep-extract-specialist` (Agent Teams for K >= 3 pages, sequential for K < 3)
+7. **Synthesize** -- Delegate to `synthesis-validator-specialist` (build evidence index, validate schema, generate README)
+8. **Commit outputs** -- Git commit to `outputs/{domain}/{timestamp}/`
+9. **Report status** -- Create GitHub Issue if < 5 pages crawled or < 5 pages extracted
+
+### Key Tools / MCPs
+
+- **Firecrawl MCP** -- Primary web crawling (handles JS rendering, returns clean markdown)
+- **HTTP + BeautifulSoup** -- Fallback crawler (no JS support, basic HTML parsing)
+- **Anthropic (Claude)** -- Structured extraction with JSON schema, synthesis with evidence tracking
+- **GitHub MCP** -- Issue creation on failures, Git commits
+- **jsonschema** -- Validation of final intelligence pack structure
+
+### GitHub Actions Trigger
+
+```yaml
+on:
+  workflow_dispatch:
+    inputs:
+      target_domain:
+        description: 'Domain to analyze (e.g., stripe.com)'
+        required: true
+      max_pages:
+        default: '200'
+      deep_extract_count:
+        default: '15'
+  schedule:
+    - cron: '0 2 * * *'  # Daily at 2 AM UTC (for batch mode)
+```
+
+### Example Use Cases
+
+- **Competitive intelligence:** Analyze competitor's pricing, features, positioning, customer testimonials
+- **Market research:** Build intelligence packs for 50+ prospects/partners in a vertical
+- **Due diligence:** Comprehensive website analysis for M&A or investment decisions
+- **Sales enablement:** Automated research on inbound leads (trigger via webhook)
+- **Partnership evaluation:** Deep analysis of potential partner capabilities and positioning
+
+### Subagent Architecture
+
+**Pattern uses specialist subagents** (default delegation mechanism):
+
+1. **relevance-ranker-specialist**
+   - Ranks pages by business intelligence value
+   - Applies path keyword scoring (pricing, faq, about, etc.)
+   - Assigns priority categories (offers_and_pricing > how_it_works > blog)
+
+2. **deep-extract-specialist**
+   - Coordinates extraction for top K pages
+   - Uses Agent Teams for parallel execution (K >= 3)
+   - Ensures every extracted field has evidence IDs (EV_001, EV_002, etc.)
+   - Builds structured extractions with quoted evidence (50-150 char excerpts)
+
+3. **synthesis-validator-specialist**
+   - Synthesizes findings across 5 dimensions (positioning, offers, journey, trust, policies)
+   - Builds complete evidence index (EV_ID → {url, excerpt, page_title, timestamp})
+   - Validates JSON schema
+   - Generates human-readable README
+
+### Agent Teams Parallelization
+
+**When:** deep-extract-specialist processes 3+ pages  
+**Why:** Page extractions are independent with no data dependencies  
+**Benefit:** 2-5x speedup (15 pages: 300s sequential → 60s parallel)  
+**Trade-off:** Same token cost, faster wall time, adds coordination complexity
+
+**Team structure:**
+- Team lead (deep-extract-specialist): Creates task manifest, spawns K teammates, merges results
+- Teammates (page-extractor-01, 02, etc.): Each extracts one page independently
+- Merge: Simple collection of extraction dicts into single deep_extract.json
+
+**Sequential fallback:** Always available. If Agent Teams fails, retry sequentially.
+
+**3+ Independent Tasks Rule:** Deep extraction is ideal for Agent Teams because:
+- 10-20 independent page extraction tasks
+- Each takes 15-30 seconds (LLM call + processing)
+- No data dependencies between pages
+- Simple merge (no conflict resolution)
+
+### Evidence Tracking Pattern
+
+**Critical rule:** Every extracted claim MUST reference evidence IDs.
+
+**Evidence structure:**
+```json
+{
+  "claim": "Targets SMB e-commerce merchants",
+  "evidence": ["EV_015", "EV_022"]
+}
+```
+
+**Evidence index:**
+```json
+{
+  "EV_015": {
+    "url": "https://example.com/about",
+    "excerpt": "Built for small business owners selling online",
+    "page_title": "About Us",
+    "extracted_at_iso": "2026-02-14T14:35:12Z"
+  }
+}
+```
+
+**Excerpt rules:**
+- 50-150 chars (long enough to verify, short enough to read)
+- Directly quoted from source content (no paraphrasing)
+- Context preserved (not mid-sentence unless needed)
+
+**Benefits:**
+- Auditability: Every claim traceable to source
+- Verification: Human reviewers can validate findings
+- Trust: Removes "black box" AI extraction concerns
+- Compliance: Meets requirements for research reports
+
+### Failure Handling
+
+**Crawl failures:**
+- Firecrawl fails → Retry 3x with exponential backoff → Fall back to HTTP crawl
+- < 5 pages crawled → Flag for GitHub Issue, continue with partial data
+
+**Extraction failures:**
+- Single page fails → Log error, continue with other pages (per-page error isolation)
+- LLM API error → Retry 3x → Return minimal structure for that page
+- < 5 pages extracted → Flag for GitHub Issue, commit partial results
+
+**Validation failures:**
+- Schema invalid → Log warnings, include in output, continue (don't halt)
+- Missing evidence → Mark broken evidence IDs, continue
+- Git push fails → Retry 3x with rebase → Create Issue if all retries fail
+
+**Critical principle:** Partial success is acceptable. Never let one failure kill the entire workflow.
+
+### Git-Native Output Storage
+
+**Pattern:** Timestamped output directories with full artifacts
+
+```
+outputs/
+  stripe.com/
+    2026-02-14T143000/
+      inventory.json           # 187 pages with metadata
+      ranked_pages.json        # Sorted by relevance
+      deep_extract.json        # 15 pages with structured data
+      site_intelligence_pack.json  # Final report with evidence index
+      README.md                # Human-readable summary
+```
+
+**Benefits:**
+- Version history (full audit trail of all past analyses)
+- Rollback capability (compare this week vs last week)
+- No external database (Git is the data layer)
+- Free hosting on GitHub
+- Queryable with `jq`, `grep`, Git history
+
+**Storage considerations:**
+- Output size: 500KB-2MB per domain
+- 100 domains analyzed = 50-200MB repository
+- Compress old analyses if repo exceeds 1GB
+- Git LFS not needed for text-based JSON/markdown
+
+### Robots.txt Compliance Pattern
+
+**Critical requirement:** ALWAYS fetch robots.txt first, filter disallowed paths before crawling.
+
+**Process:**
+1. Fetch robots.txt from `https://{domain}/robots.txt`
+2. Parse User-agent: * rules
+3. Extract Disallowed paths list
+4. Filter crawl results: skip any URL matching disallowed path prefix
+5. Log blocked URLs for transparency
+
+**Graceful degradation:**
+- 404 (no robots.txt) → Assume all paths allowed
+- Network timeout → Assume all paths allowed
+- Parse error → Log warning, assume all paths allowed
+
+**Why critical:**
+- Ethical: Respects site owner preferences
+- Legal: robots.txt has legal standing in some jurisdictions
+- Practical: Avoids crawling admin/private pages that yield no business intelligence
+
+### Cost Estimates
+
+**Per domain (200 pages, 15 deep extractions):**
+- Firecrawl: $0.02-0.10 (depends on page complexity)
+- Claude (deep extraction): $0.30-0.90 (15 pages × $0.02-0.06/page)
+- Claude (synthesis): $0.10-0.30
+- **Total: $0.42-1.30 per domain**
+
+**Execution time:**
+- Sequential: 5-8 minutes (200-page crawl + 15×20s extractions)
+- With Agent Teams: 3-5 minutes (parallel extraction saves 2-3 minutes)
+
+**Batch processing (100 domains/month):**
+- Cost: $42-130/month
+- Time: 5-8 hours (sequential) or 3-5 hours (Agent Teams)
+
+### Success Criteria
+
+- ✅ Crawls target domain (50-200 pages typical)
+- ✅ Respects robots.txt (disallowed paths filtered)
+- ✅ Rate limiting enforced (1-2 req/sec)
+- ✅ Relevance ranking applied (priority categories assigned)
+- ✅ Deep extraction on top K pages (K = 10-20)
+- ✅ Every claim has evidence (no unsourced findings)
+- ✅ Evidence index complete (all IDs resolvable)
+- ✅ De-duplication applied (canonical URLs, content hashing)
+- ✅ JSON schema validation passes
+- ✅ Outputs committed to Git
+- ✅ GitHub Issue created if < 5 pages extracted (failure threshold)
+
+### Key Learnings (from site-intelligence-pack build)
+
+- **Evidence tracking is non-negotiable** — Business intelligence reports require auditability
+- **Excerpt length matters** — 50-150 chars is the sweet spot (verifiable but not overwhelming)
+- **Subagents for specialization, Agent Teams for parallelization** — Don't confuse the two
+- **Partial success is valuable** — 10 pages extracted is better than 0 (don't halt on single failure)
+- **Firecrawl + HTTP fallback works** — API-first with stdlib fallback maximizes reliability
+- **robots.txt fetch must be first** — Ethical and legal requirement, not optional
+- **Rate limiting is critical** — 1-2 req/sec prevents server overload and bans
+- **De-duplication saves time** — Many sites have duplicate content (canonical URLs + content hashing)
+- **Agent Teams for K >= 3** — Clear threshold for when parallelization is worth coordination overhead
+- **Git-native storage scales well** — 100 domains = 50-200MB, manageable in Git
+
+### Related Patterns
+
+Combines elements of:
+- **Scrape > Process > Output** (base crawl and extraction)
+- **Fan-Out > Process > Merge** (Agent Teams for parallel extraction)
+- **Research > Analyze > Report** (multi-source synthesis)
+- **Collect > Transform > Store** (Git-native output storage)
+
+Often chained with:
+- **Marketing Pipeline** (upstream: site intelligence → lead scoring → outreach)
+- **Multi-Source Weekly Monitor** (recurring intelligence for competitor watchlist)
+
+### Anti-Patterns to Avoid
+
+- ❌ **Skip robots.txt** — Unethical, illegal in some jurisdictions, wastes crawl on admin pages
+- ❌ **Extract without evidence** — Creates "black box" AI reports that aren't auditable
+- ❌ **Use Agent Teams for delegation** — Subagents are for specialization, Agent Teams for parallelization
+- ❌ **Halt on single page failure** — Per-page error isolation ensures partial success
+- ❌ **Ignore rate limiting** — Overloading servers leads to IP bans
+- ❌ **Hardcode API keys** — Always use environment variables or GitHub Secrets
+- ❌ **Use `git add -A`** — Stage only `outputs/` directory to avoid accidental commits
+- ❌ **Skip de-duplication** — Wastes extraction API calls on duplicate content
+- ❌ **Parse HTML without fallback** — Firecrawl failure shouldn't halt the system
+
+### Extensions and Variations
+
+**Batch mode:** Process multiple domains from `inputs/targets.csv` sequentially or in parallel
+**Screenshot capture:** Add visual evidence (Puppeteer/Playwright) for UI/UX analysis
+**Historical comparison:** Compare current intelligence pack against previous week/month to detect changes
+**Webhook integration:** Trigger analysis on inbound lead via webhook (Zapier, Make, etc.)
+**Custom extractors:** Add domain-specific extraction schemas (e.g., SaaS metrics, e-commerce inventory)
+
+### Testing Recommendations
+
+1. **Start small:** Test with max_pages=10, deep_extract_count=3 on a known domain (example.com)
+2. **Validate evidence:** Manually check 5 random evidence IDs → excerpts are accurate
+3. **Check robots.txt:** Verify disallowed paths are actually filtered
+4. **Test fallback:** Temporarily break Firecrawl API key, verify HTTP fallback works
+5. **Test Agent Teams:** Run with K >= 3 and K < 3, verify both paths work
+6. **Validate schema:** Run validate_schema.py on output, fix any validation errors
+7. **Cost monitoring:** Track API costs for first 10 domains, extrapolate for budget planning
+
+---

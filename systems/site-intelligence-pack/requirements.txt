@@ -1,0 +1,10 @@
+# Core dependencies
+httpx>=0.27.0
+anthropic>=0.40.0
+beautifulsoup4>=4.12.0
+jsonschema>=4.20.0
+tenacity>=8.2.0
+python-dateutil>=2.8.0
+
+# Optional: For Firecrawl Python SDK (if available)
+# firecrawl-py>=1.0.0  # Use direct API calls if SDK unavailable
