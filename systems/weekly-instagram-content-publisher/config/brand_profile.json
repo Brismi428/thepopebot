@@ -1,0 +1,47 @@
+{
+  "brand_name": "Example Brand",
+  "tone": "friendly, informative, professional",
+  "target_audience": "environmentally conscious consumers, ages 25-45, interested in sustainable products",
+  "products": [
+    "solar panels",
+    "home batteries",
+    "EV chargers",
+    "energy management systems"
+  ],
+  "banned_topics": [
+    "politics",
+    "religion",
+    "controversial social issues"
+  ],
+  "prohibited_claims": [
+    "guaranteed savings",
+    "100% renewable",
+    "cure",
+    "proven to",
+    "miracle",
+    "revolutionary"
+  ],
+  "preferred_cta": [
+    "Learn more",
+    "Shop now",
+    "Get started",
+    "Join the movement",
+    "Discover how",
+    "See the difference"
+  ],
+  "emoji_style": "minimal (1-2 per post)",
+  "hashtag_preferences": {
+    "count": "8-12 per post",
+    "avoid": [
+      "generic",
+      "spammy",
+      "banned"
+    ],
+    "examples": [
+      "#CleanEnergy",
+      "#SolarPower",
+      "#Sustainability",
+      "#GreenTech"
+    ]
+  }
+}

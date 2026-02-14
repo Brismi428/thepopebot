@@ -1,0 +1,16 @@
+# Instagram Content Publisher Dependencies
+
+# AI / LLM
+anthropic>=0.40.0
+
+# Web scraping
+firecrawl-py>=1.5.0
+httpx>=0.27.0
+beautifulsoup4>=4.12.0
+
+# Utilities
+python-dateutil>=2.9.0
+tenacity>=9.0.0
+
+# Optional integrations (uncomment if needed)
+# slack-sdk>=3.33.0

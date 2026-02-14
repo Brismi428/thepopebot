@@ -1,0 +1,235 @@
+name: Generate Instagram Content
+
+on:
+  schedule:
+    # Every Monday at 09:00 UTC
+    - cron: '0 9 * * 1'
+  
+  workflow_dispatch:
+    inputs:
+      brand_profile_path:
+        description: 'Path to brand profile JSON file'
+        required: true
+        default: 'config/brand_profile.json'
+      weekly_theme:
+        description: 'Weekly theme or campaign focus'
+        required: true
+      post_plan:
+        description: 'JSON post plan (reels, carousels, singles counts)'
+        required: true
+        default: '{"reels": 3, "carousels": 2, "single_images": 2}'
+      reference_links:
+        description: 'JSON array of reference URLs (optional)'
+        required: false
+        default: '[]'
+      publishing_mode:
+        description: 'Publishing mode'
+        required: true
+        type: choice
+        options:
+          - content_pack_only
+          - auto_publish
+        default: 'content_pack_only'
+
+  issues:
+    types: [opened, labeled]
+
+jobs:
+  generate-content:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    
+    # Only run on schedule or manual dispatch, or if issue has instagram-content-request label
+    if: |
+      github.event_name == 'schedule' ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'issues' && contains(github.event.issue.labels.*.name, 'instagram-content-request'))
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+      
+      - name: Parse issue inputs (if issue-triggered)
+        if: github.event_name == 'issues'
+        id: parse-issue
+        run: |
+          # Extract YAML or JSON from issue body
+          # This is a simplified parser - production would use proper YAML parsing
+          echo "brand_profile_path=config/brand_profile.json" >> $GITHUB_OUTPUT
+          echo "weekly_theme=Weekly Content Request" >> $GITHUB_OUTPUT
+          echo 'post_plan={"reels": 3, "carousels": 2, "single_images": 2}' >> $GITHUB_OUTPUT
+          echo 'reference_links=[]' >> $GITHUB_OUTPUT
+          echo "publishing_mode=content_pack_only" >> $GITHUB_OUTPUT
+      
+      - name: Set workflow inputs
+        id: inputs
+        run: |
+          if [ "${{ github.event_name }}" == "schedule" ]; then
+            echo "brand_profile_path=config/brand_profile.json" >> $GITHUB_OUTPUT
+            echo "weekly_theme=Weekly Content - $(date +%Y-%m-%d)" >> $GITHUB_OUTPUT
+            echo 'post_plan={"reels": 3, "carousels": 2, "single_images": 2}' >> $GITHUB_OUTPUT
+            echo 'reference_links=[]' >> $GITHUB_OUTPUT
+            echo "publishing_mode=content_pack_only" >> $GITHUB_OUTPUT
+          elif [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "brand_profile_path=${{ github.event.inputs.brand_profile_path }}" >> $GITHUB_OUTPUT
+            echo "weekly_theme=${{ github.event.inputs.weekly_theme }}" >> $GITHUB_OUTPUT
+            echo "post_plan=${{ github.event.inputs.post_plan }}" >> $GITHUB_OUTPUT
+            echo "reference_links=${{ github.event.inputs.reference_links }}" >> $GITHUB_OUTPUT
+            echo "publishing_mode=${{ github.event.inputs.publishing_mode }}" >> $GITHUB_OUTPUT
+          else
+            echo "brand_profile_path=${{ steps.parse-issue.outputs.brand_profile_path }}" >> $GITHUB_OUTPUT
+            echo "weekly_theme=${{ steps.parse-issue.outputs.weekly_theme }}" >> $GITHUB_OUTPUT
+            echo "post_plan=${{ steps.parse-issue.outputs.post_plan }}" >> $GITHUB_OUTPUT
+            echo "reference_links=${{ steps.parse-issue.outputs.reference_links }}" >> $GITHUB_OUTPUT
+            echo "publishing_mode=${{ steps.parse-issue.outputs.publishing_mode }}" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Validate inputs
+        id: validate
+        run: |
+          python tools/validate_inputs.py \
+            --brand-profile-path "${{ steps.inputs.outputs.brand_profile_path }}" \
+            --weekly-theme "${{ steps.inputs.outputs.weekly_theme }}" \
+            --post-plan '${{ steps.inputs.outputs.post_plan }}' \
+            --reference-links '${{ steps.inputs.outputs.reference_links }}' \
+            --publishing-mode "${{ steps.inputs.outputs.publishing_mode }}" \
+            --output validated_inputs.json
+      
+      - name: Setup output directory
+        run: |
+          python tools/setup_output.py --date $(date +%Y-%m-%d)
+      
+      - name: Fetch reference content
+        run: |
+          python tools/fetch_reference_content.py \
+            --reference-links '${{ steps.inputs.outputs.reference_links }}' \
+            --output reference_content.json
+        env:
+          FIRECRAWL_API_KEY: ${{ secrets.FIRECRAWL_API_KEY }}
+      
+      - name: Generate content strategy
+        run: |
+          python tools/generate_content_strategy.py \
+            --validated-inputs validated_inputs.json \
+            --reference-content reference_content.json \
+            --output content_strategy.json
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      
+      - name: Generate post content
+        run: |
+          python tools/generate_post_content.py \
+            --content-strategy content_strategy.json \
+            --brand-profile "${{ steps.inputs.outputs.brand_profile_path }}" \
+            --output generated_content.json
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      
+      - name: Review content quality
+        run: |
+          python tools/review_content.py \
+            --generated-content generated_content.json \
+            --brand-profile "${{ steps.inputs.outputs.brand_profile_path }}" \
+            --reference-content reference_content.json \
+            --output review_report.json
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      
+      - name: Gate decision
+        id: gate
+        run: |
+          python tools/gate_decision.py \
+            --review-report review_report.json \
+            --publishing-mode "${{ steps.inputs.outputs.publishing_mode }}" \
+            --output publish_decision.json
+          
+          # Extract decision for next steps
+          ACTION=$(jq -r '.action' publish_decision.json)
+          echo "action=$ACTION" >> $GITHUB_OUTPUT
+      
+      - name: Auto-publish to Instagram
+        if: steps.gate.outputs.action == 'publish'
+        run: |
+          python tools/publish_to_instagram.py \
+            --generated-content generated_content.json \
+            --output "output/instagram/$(date +%Y-%m-%d)/publish_log_$(date +%Y-%m-%d).json"
+        env:
+          INSTAGRAM_ACCESS_TOKEN: ${{ secrets.INSTAGRAM_ACCESS_TOKEN }}
+          INSTAGRAM_USER_ID: ${{ secrets.INSTAGRAM_USER_ID }}
+      
+      - name: Generate manual content pack
+        if: steps.gate.outputs.action == 'manual_pack' || failure()
+        run: |
+          python tools/generate_content_pack.py \
+            --generated-content generated_content.json \
+            --review-report review_report.json \
+            --weekly-theme "${{ steps.inputs.outputs.weekly_theme }}" \
+            --output-dir "output/instagram/$(date +%Y-%m-%d)"
+          
+          python tools/generate_upload_checklist.py \
+            --generated-content generated_content.json \
+            --output-dir "output/instagram/$(date +%Y-%m-%d)"
+      
+      - name: Update latest index
+        run: |
+          REVIEW_SCORE=$(jq -r '.overall_score' review_report.json)
+          PUBLISH_STATUS="${{ steps.gate.outputs.action }}"
+          
+          python tools/update_latest_index.py \
+            --output-dir "output/instagram/$(date +%Y-%m-%d)" \
+            --weekly-theme "${{ steps.inputs.outputs.weekly_theme }}" \
+            --review-score "$REVIEW_SCORE" \
+            --publish-status "$PUBLISH_STATUS"
+      
+      - name: Archive cleanup
+        run: |
+          python tools/archive_cleanup.py \
+            --archive-dir output/instagram \
+            --retention-weeks 12
+      
+      - name: Commit outputs
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          
+          git add output/instagram/
+          git commit -m "Instagram content pack - $(date +%Y-%m-%d)" || echo "No changes to commit"
+          git push
+      
+      - name: Send notification
+        if: always()
+        run: |
+          REVIEW_SCORE=$(jq -r '.overall_score' review_report.json || echo "0")
+          ACTION="${{ steps.gate.outputs.action }}"
+          
+          SUMMARY="**Instagram Content Pack Generated**
+
+**Date:** $(date +%Y-%m-%d)
+**Theme:** ${{ steps.inputs.outputs.weekly_theme }}
+**Quality Score:** ${REVIEW_SCORE}/100
+**Action:** ${ACTION}
+
+[View Content Pack](./output/instagram/$(date +%Y-%m-%d)/content_pack_$(date +%Y-%m-%d).md)
+[View Latest](./output/instagram/latest.md)"
+          
+          if [ "${{ github.event_name }}" == "issues" ]; then
+            python tools/send_notification.py \
+              --summary "$SUMMARY" \
+              --target github \
+              --issue-number "${{ github.event.issue.number }}"
+          else
+            python tools/send_notification.py \
+              --summary "$SUMMARY" \
+              --target stdout
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

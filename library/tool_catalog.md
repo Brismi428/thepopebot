@@ -3556,3 +3556,367 @@ Each path needs:
 
 **README.md is for humans, CLAUDE.md is for agents.**
 
+
+---
+
+## Social Media Publishing
+
+### `instagram_graph_api_publish`
+
+**Description:** Publishes posts to Instagram via Graph API with media container creation, scheduling support, and comprehensive error handling for rate limits and authentication failures.
+
+| Field | Detail |
+|---|---|
+| **Input** | `posts: list[dict]`, `access_token: str`, `ig_user_id: str` |
+| **Output** | `dict` with per-post publish results (media_ids, permalinks, errors) |
+| **Key Dependencies** | `httpx`, `tenacity` |
+| **MCP Alternative** | None standard; direct HTTP to Graph API |
+
+```python
+import httpx
+import time
+
+def publish_post(post: dict, access_token: str, ig_user_id: str) -> dict:
+    """Publish a single post to Instagram Graph API."""
+    # Format caption (hook + body + CTA + hashtags, max 2200 chars)
+    caption = f"{post['hook']}\n\n{post['caption']}\n\n{post['cta']}\n\n{' '.join(post['hashtags'])}"
+    if len(caption) > 2200:
+        caption = caption[:2197] + "..."
+    
+    # Create media container
+    create_url = f"https://graph.facebook.com/v18.0/{ig_user_id}/media"
+    create_params = {
+        "caption": caption,
+        "image_url": post.get("media_url"),  # Must be public HTTPS URL
+        "access_token": access_token
+    }
+    
+    resp = httpx.post(create_url, params=create_params, timeout=30)
+    resp.raise_for_status()
+    container_id = resp.json().get("id")
+    
+    # Publish media container
+    publish_url = f"https://graph.facebook.com/v18.0/{ig_user_id}/media_publish"
+    publish_params = {"creation_id": container_id, "access_token": access_token}
+    
+    resp = httpx.post(publish_url, params=publish_params, timeout=30)
+    resp.raise_for_status()
+    
+    return {
+        "post_id": post["post_id"],
+        "status": "success",
+        "ig_media_id": resp.json().get("id"),
+        "ig_permalink": f"https://instagram.com/p/{resp.json().get('id')}"
+    }
+```
+
+**Error Handling:**
+- **429 Rate Limit** -- Return `{"status": "rate_limited", "retry_after": ...}`, halt further publishing
+- **401/403 Auth** -- Return `{"status": "auth_failed"}`, halt and fall back to manual pack
+- **Media URL Error** -- Skip post, continue with others, log error
+
+---
+
+### `multi_dimension_quality_scorer`
+
+**Description:** Scores content across N independent dimensions with configurable thresholds, structured LLM scoring, and pass/fail logic. Used for content quality assurance before publishing.
+
+| Field | Detail |
+|---|---|
+| **Input** | `content: dict`, `brand_profile: dict`, `reference_data: dict`, `dimensions: list[dict]` |
+| **Output** | `dict` with per-dimension scores, overall score, pass/fail decision, detailed issues |
+| **Key Dependencies** | `anthropic` (or compatible LLM) |
+| **MCP Alternative** | Anthropic MCP |
+
+```python
+import anthropic
+import json
+
+def score_multi_dimension(content: dict, brand_profile: dict, reference_data: dict) -> dict:
+    """Score content across multiple quality dimensions."""
+    client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+    
+    # Build scoring prompt
+    prompt = f"""Score the following content across 5 dimensions (0-100 each):
+
+**Content:**
+{json.dumps(content, indent=2)}
+
+**Brand Guidelines:**
+{json.dumps(brand_profile, indent=2)}
+
+**Reference Material:**
+{reference_data.get('summary', 'No references')}
+
+Return ONLY valid JSON matching this schema:
+{{
+  "brand_voice": {{"score": 90, "issues": ["list of issues"]}},
+  "compliance": {{"score": 100, "issues": []}},
+  "optimization": {{"score": 85, "issues": ["issue 1"]}},
+  "format": {{"score": 95, "issues": []}},
+  "claims": {{"score": 100, "issues": []}}
+}}
+
+**Scoring Criteria:**
+1. Brand Voice (0-100): Tone match, audience fit, style consistency
+2. Compliance (0-100, must be 100): No banned topics, prohibited claims
+3. Optimization (0-100): Platform-specific best practices
+4. Format (0-100): Character limits, required fields present
+5. Claims (0-100, must be 100): All factual claims sourced from references
+
+List ALL issues found."""
+    
+    response = client.messages.create(
+        model="claude-sonnet-4-20250514",
+        max_tokens=3072,
+        temperature=0.0,
+        messages=[{"role": "user", "content": prompt}]
+    )
+    
+    text = response.content[0].text.strip()
+    if text.startswith("```"):
+        text = text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
+    
+    scores = json.loads(text)
+    
+    # Calculate overall score
+    dimension_scores = [v["score"] for v in scores.values()]
+    overall = sum(dimension_scores) / len(dimension_scores)
+    
+    # Determine pass/fail
+    compliance_ok = scores.get("compliance", {}).get("score", 0) == 100
+    claims_ok = scores.get("claims", {}).get("score", 0) == 100
+    overall_ok = overall >= 80
+    
+    pass_fail = "PASS" if (overall_ok and compliance_ok and claims_ok) else "FAIL"
+    
+    return {
+        "scores": scores,
+        "overall_score": round(overall, 1),
+        "pass_fail": pass_fail,
+        "pass_criteria": {
+            "overall_80": overall_ok,
+            "compliance_100": compliance_ok,
+            "claims_100": claims_ok
+        }
+    }
+```
+
+**Key Patterns:**
+- **LLM structured scoring** with JSON schema enforcement
+- **Multi-dimensional breakdown** for transparent quality assessment
+- **Critical dimension enforcement** (compliance, claims must be 100)
+- **Retry with corrective prompts** if JSON parsing fails
+
+---
+
+### `content_strategy_generator`
+
+**Description:** Generates content strategy from brand guidelines, theme, and reference material using LLM analysis. Produces per-item content briefs, posting schedule, and content themes.
+
+| Field | Detail |
+|---|---|
+| **Input** | `brand_profile: dict`, `theme: str`, `content_plan: dict`, `reference_content: dict` |
+| **Output** | `dict` with content_briefs (array), posting_schedule (array), content_themes (array) |
+| **Key Dependencies** | `anthropic` |
+| **MCP Alternative** | Anthropic MCP |
+
+```python
+import anthropic
+import json
+
+def generate_content_strategy(
+    brand_profile: dict,
+    theme: str,
+    content_plan: dict,
+    reference_content: dict
+) -> dict:
+    """Generate content strategy using LLM."""
+    client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+    
+    # Build context from reference material
+    ref_text = "\n\n".join(
+        f"Source: {r['url']}\n{r['content'][:1000]}"
+        for r in reference_content.get("reference_content", [])
+        if r.get("success")
+    ) or "No reference material provided."
+    
+    total_items = sum(content_plan.get(t, 0) for t in ["reels", "carousels", "single_images"])
+    
+    prompt = f"""You are a content strategist. Generate a strategy for {total_items} content items.
+
+**Brand:** {brand_profile['brand_name']}
+**Theme:** {theme}
+**Content Plan:** {json.dumps(content_plan)}
+**References:** {ref_text}
+
+Generate {total_items} content briefs, posting schedule, and themes.
+Return ONLY valid JSON matching this schema:
+{{
+  "content_briefs": [
+    {{
+      "item_number": 1,
+      "type": "reel",
+      "theme": "Product announcement",
+      "objective": "Generate awareness",
+      "key_messages": ["msg1", "msg2"],
+      "target_emotion": "excitement"
+    }}
+  ],
+  "posting_schedule": [
+    {{
+      "item_number": 1,
+      "day": "Monday",
+      "time": "10:00 AM",
+      "rationale": "High engagement time"
+    }}
+  ],
+  "content_themes": ["theme1", "theme2"]
+}}"""
+    
+    response = client.messages.create(
+        model="claude-sonnet-4-20250514",
+        max_tokens=4096,
+        temperature=0.3,
+        messages=[{"role": "user", "content": prompt}]
+    )
+    
+    text = response.content[0].text.strip()
+    if text.startswith("```"):
+        text = text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
+    
+    return json.loads(text)
+```
+
+---
+
+### `gate_decision_logic`
+
+**Description:** Deterministic gate logic that decides between auto-publish and manual content pack based on quality review results and user-specified mode.
+
+| Field | Detail |
+|---|---|
+| **Input** | `review_report: dict`, `mode: Literal["auto_publish", "content_pack_only"]` |
+| **Output** | `dict` with action (publish | manual_pack), rationale, review_score |
+| **Key Dependencies** | None (stdlib only) |
+| **MCP Alternative** | None; pure logic |
+
+```python
+def gate_decision(review_report: dict, mode: str) -> dict:
+    """Determine publishing action based on review and mode."""
+    pass_fail = review_report.get("pass_fail", "FAIL")
+    overall_score = review_report.get("overall_score", 0)
+    
+    if pass_fail == "PASS" and mode == "auto_publish":
+        action = "publish"
+        rationale = f"Quality gates passed (score: {overall_score}/100), auto-publish enabled"
+    elif pass_fail == "FAIL":
+        action = "manual_pack"
+        rationale = f"Quality score {overall_score}/100 - gates not met, manual review required"
+    else:  # mode == "content_pack_only"
+        action = "manual_pack"
+        rationale = "Content pack only mode enabled, skipping auto-publish"
+    
+    return {
+        "action": action,
+        "rationale": rationale,
+        "review_score": overall_score,
+        "review_pass_fail": pass_fail,
+        "mode": mode
+    }
+```
+
+**Key Pattern:** Separating gate decision from quality review keeps review neutral (just reports) and makes decision logic easy to modify.
+
+---
+
+### `dual_format_content_pack_generator`
+
+**Description:** Generates both human-readable (Markdown) and machine-readable (JSON) content packs from generated content, plus optional copy-paste upload checklist.
+
+| Field | Detail |
+|---|---|
+| **Input** | `content: dict`, `review: dict`, `theme: str`, `output_dir: str` |
+| **Output** | `dict` with paths to generated files (markdown, json, checklist) |
+| **Key Dependencies** | `pathlib`, `json` |
+| **MCP Alternative** | None |
+
+```python
+from pathlib import Path
+from datetime import datetime
+import json
+
+def generate_content_pack(content: dict, review: dict, theme: str, output_dir: str) -> dict:
+    """Generate dual-format content pack."""
+    output_path = Path(output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+    
+    date_str = datetime.utcnow().strftime("%Y-%m-%d")
+    
+    # Generate Markdown (human-readable)
+    md = f"""# Content Pack - {date_str}
+
+**Theme:** {theme}
+**Quality Score:** {review.get('overall_score', 0)}/100 - {review.get('pass_fail', 'UNKNOWN')}
+
+---
+
+"""
+    
+    for item in content.get("items", []):
+        md += f"""## Item {item['item_number']}: {item.get('type', 'unknown').upper()}
+
+**Content:**
+{item.get('content', '')}
+
+**Metadata:**
+{json.dumps(item.get('metadata', {}), indent=2)}
+
+---
+
+"""
+    
+    md_path = output_path / f"content_pack_{date_str}.md"
+    md_path.write_text(md)
+    
+    # Generate JSON (machine-readable)
+    json_data = {
+        "metadata": {
+            "generated_at": datetime.utcnow().isoformat() + "Z",
+            "theme": theme,
+            "quality_score": review.get("overall_score", 0)
+        },
+        "items": content.get("items", [])
+    }
+    
+    json_path = output_path / f"content_pack_{date_str}.json"
+    json_path.write_text(json.dumps(json_data, indent=2))
+    
+    # Generate upload checklist (copy-paste ready)
+    checklist = f"""# Upload Checklist - {date_str}
+
+"""
+    for item in content.get("items", []):
+        checklist += f"""---
+
+## [ ] Item {item['item_number']}: {item.get('type', 'unknown')}
+
+**Copy-paste:**
+```
+{item.get('content', '')}
+```
+
+"""
+    
+    checklist_path = output_path / f"upload_checklist_{date_str}.md"
+    checklist_path.write_text(checklist)
+    
+    return {
+        "markdown": str(md_path),
+        "json": str(json_path),
+        "checklist": str(checklist_path)
+    }
+```
+
+**Key Pattern:** Dual-format output serves both human review (Markdown) and automation (JSON), plus manual fallback (checklist).
+
