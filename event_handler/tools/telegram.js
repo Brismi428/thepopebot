@@ -90,6 +90,37 @@ function escapeHtml(text) {
 }
 
 /**
+ * Convert markdown-formatted text to Telegram-safe HTML.
+ * Handles: **bold**, *italic*, `code`, ```code blocks```, [links](url)
+ * Escapes all HTML entities first, then applies formatting.
+ * @param {string} text - Markdown-formatted text
+ * @returns {string} Telegram-compatible HTML
+ */
+function mdToTelegramHtml(text) {
+  if (!text) return '';
+
+  // Escape HTML entities first so raw <, >, & don't break parsing
+  let html = escapeHtml(text);
+
+  // Code blocks (``` ... ```) — must come before inline code
+  html = html.replace(/```(?:\w*\n)?([\s\S]*?)```/g, '<pre>$1</pre>');
+
+  // Inline code (` ... `)
+  html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+
+  // Bold (**text**)
+  html = html.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
+
+  // Italic (*text*) — but not inside words or after already-processed bold
+  html = html.replace(/(?<![<\w])\*([^*]+?)\*(?![>\w])/g, '<i>$1</i>');
+
+  // Links [text](url)
+  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
+
+  return html;
+}
+
+/**
  * Send a message to a Telegram chat with HTML formatting
  * Automatically splits long messages
  * @param {string} botToken - Bot token from @BotFather
@@ -215,6 +246,7 @@ module.exports = {
   sendMessage,
   smartSplit,
   escapeHtml,
+  mdToTelegramHtml,
   formatJobNotification,
   downloadFile,
   reactToMessage,

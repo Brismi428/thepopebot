@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const log = require('./logger');
 
 const REPO_ROOT = path.join(__dirname, '..', '..');
 const INCLUDE_PATTERN = /\{\{([^}]+\.md)\}\}/g;
@@ -16,7 +17,7 @@ function render_md(filePath, chain = []) {
 
   if (chain.includes(resolved)) {
     const cycle = [...chain, resolved].map((p) => path.relative(REPO_ROOT, p)).join(' -> ');
-    console.log(`[render_md] Circular include detected: ${cycle}`);
+    log.warn({ cycle }, 'Circular include detected in markdown');
     return '';
   }
 

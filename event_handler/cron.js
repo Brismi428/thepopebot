@@ -4,6 +4,7 @@ const path = require('path');
 require('dotenv').config();
 
 const { executeAction } = require('./actions');
+const log = require('./utils/logger');
 const CRON_DIR = path.join(__dirname, 'cron');
 
 /**
@@ -13,11 +14,10 @@ const CRON_DIR = path.join(__dirname, 'cron');
 function loadCrons() {
   const cronFile = path.join(__dirname, '..', 'operating_system', 'CRONS.json');
 
-  console.log('\n--- Cron Jobs ---');
+  log.info('Loading cron jobs');
 
   if (!fs.existsSync(cronFile)) {
-    console.log('No CRONS.json found');
-    console.log('-----------------\n');
+    log.info('No CRONS.json found');
     return [];
   }
 
@@ -29,17 +29,16 @@ function loadCrons() {
     if (enabled === false) continue;
 
     if (!cron.validate(schedule)) {
-      console.error(`Invalid schedule for "${name}": ${schedule}`);
+      log.error({ name, schedule }, 'Invalid cron schedule');
       continue;
     }
 
     const task = cron.schedule(schedule, async () => {
       try {
         const result = await executeAction(cronEntry, { cwd: CRON_DIR });
-        console.log(`[CRON] ${name}: ${result || 'ran'}`);
-        console.log(`[CRON] ${name}: completed!`);
+        log.info({ name, result: result || 'ran' }, 'Cron job completed');
       } catch (err) {
-        console.error(`[CRON] ${name}: error - ${err.message}`);
+        log.error({ name, err: err.message }, 'Cron job failed');
       }
     });
 
@@ -47,21 +46,21 @@ function loadCrons() {
   }
 
   if (tasks.length === 0) {
-    console.log('No active cron jobs');
+    log.info('No active cron jobs');
   } else {
     for (const { name, schedule, type } of tasks) {
-      console.log(`  ${name}: ${schedule} (${type})`);
+      log.info({ name, schedule, type }, 'Cron job registered');
     }
   }
 
-  console.log('-----------------\n');
+  log.info({ count: tasks.length }, 'Cron jobs loaded');
 
   return tasks;
 }
 
 // Run if executed directly
 if (require.main === module) {
-  console.log('Starting cron scheduler...');
+  log.info('Starting cron scheduler...');
   loadCrons();
 }
 

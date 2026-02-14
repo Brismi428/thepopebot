@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 
 const { executeAction } = require('./actions');
+const log = require('./utils/logger');
 const TRIGGERS_DIR = path.join(__dirname, 'triggers');
 
 /**
@@ -32,9 +33,9 @@ async function executeActions(trigger, context) {
       if (resolved.command) resolved.command = resolveTemplate(resolved.command, context);
       if (resolved.job) resolved.job = resolveTemplate(resolved.job, context);
       const result = await executeAction(resolved, { cwd: TRIGGERS_DIR, data: context.body });
-      console.log(`[TRIGGER] ${trigger.name}: ${result || 'ran'}`);
+      log.info({ trigger: trigger.name, result: result || 'ran' }, 'Trigger executed');
     } catch (err) {
-      console.error(`[TRIGGER] ${trigger.name}: error - ${err.message}`);
+      log.error({ trigger: trigger.name, err: err.message }, 'Trigger action failed');
     }
   }
 }
@@ -47,11 +48,10 @@ function loadTriggers() {
   const triggerFile = path.join(__dirname, '..', 'operating_system', 'TRIGGERS.json');
   const triggerMap = new Map();
 
-  console.log('\n--- Triggers ---');
+  log.info('Loading triggers');
 
   if (!fs.existsSync(triggerFile)) {
-    console.log('No TRIGGERS.json found');
-    console.log('----------------\n');
+    log.info('No TRIGGERS.json found');
     return (req, res, next) => next();
   }
 
@@ -69,17 +69,17 @@ function loadTriggers() {
   const activeCount = [...triggerMap.values()].reduce((sum, arr) => sum + arr.length, 0);
 
   if (activeCount === 0) {
-    console.log('No active triggers');
+    log.info('No active triggers');
   } else {
     for (const [watchPath, pathTriggers] of triggerMap) {
       for (const t of pathTriggers) {
         const actionTypes = t.actions.map(a => a.type || 'agent').join(', ');
-        console.log(`  ${t.name}: ${watchPath} (${actionTypes})`);
+        log.info({ trigger: t.name, watchPath, actionTypes }, 'Trigger registered');
       }
     }
   }
 
-  console.log('----------------\n');
+  log.info({ count: activeCount }, 'Triggers loaded');
 
   return (req, res, next) => {
     const matched = triggerMap.get(req.path);
@@ -91,7 +91,7 @@ function loadTriggers() {
       };
       for (const trigger of matched) {
         executeActions(trigger, context).catch(err => {
-          console.error(`[TRIGGER] ${trigger.name}: unhandled error - ${err.message}`);
+          log.error({ trigger: trigger.name, err: err.message }, 'Trigger unhandled error');
         });
       }
     }

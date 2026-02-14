@@ -1,5 +1,6 @@
 const path = require('path');
 const { render_md } = require('../utils/render-md');
+const log = require('../utils/logger');
 
 const DEFAULT_MODEL = 'claude-sonnet-4-20250514';
 
