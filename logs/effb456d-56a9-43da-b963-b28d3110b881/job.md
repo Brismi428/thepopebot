@@ -1,0 +1,1 @@
+This is a test job. Write a short haiku about automation to logs/test.md, then commit and open a PR. Do not modify any other files.
