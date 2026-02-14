@@ -53,7 +53,7 @@ export default function DashboardPage() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.2, delay: i * 0.05 }}
           >
-            <Link href={tool.href} className="card block hover:shadow-md transition-shadow">
+            <Link href={tool.href} className="card-interactive block">
               <div className="flex items-center gap-3 mb-3">
                 {tool.href.includes('pipeline') ? (
                   <Workflow className="w-5 h-5" style={{ color: 'var(--accent)' }} />

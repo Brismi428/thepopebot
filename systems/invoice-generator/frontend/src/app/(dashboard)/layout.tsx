@@ -59,8 +59,8 @@ export default function DashboardLayout({
     <div className="min-h-screen flex">
       {/* Sidebar */}
       <aside
-        className="hidden lg:flex flex-col w-60 border-r p-4 shrink-0"
-        style={{ borderColor: 'var(--border)', backgroundColor: 'var(--bg-secondary)' }}
+        className="hidden lg:flex flex-col w-64 border-r p-5 shrink-0"
+        style={{ borderColor: 'var(--sidebar-border)', backgroundColor: 'var(--sidebar-bg)' }}
       >
         <Link href="/dashboard/" className="flex items-center gap-2 px-2 mb-8">
           <Workflow className="w-6 h-6" style={{ color: 'var(--accent)' }} />
