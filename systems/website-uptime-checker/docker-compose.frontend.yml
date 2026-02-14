@@ -1,0 +1,23 @@
+# docker-compose.frontend.yml
+# Single-container deployment for website-uptime-checker-—-operating-instructions
+# FastAPI serves API at /api/* and Next.js static export at /*
+
+services:
+  website-uptime-checker-—-operating-instructions:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    container_name: website-uptime-checker-—-operating-instructions
+    ports:
+      - "8000:8000"
+    environment:
+      - CORS_ORIGINS=http://localhost:8000,https://${DOMAIN:-localhost}
+      - TELEGRAM_BOT_TOKEN=${{ TELEGRAM_BOT_TOKEN }}
+      - TELEGRAM_CHAT_ID=${{ TELEGRAM_CHAT_ID }}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s

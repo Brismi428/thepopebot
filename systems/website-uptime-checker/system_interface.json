@@ -1,0 +1,195 @@
+{
+  "schema_version": "1.0",
+  "system_dir": "/home/deploy/thepopebot/systems/website-uptime-checker",
+  "system": {
+    "system_name": "Website Uptime Checker \u2014 Operating Instructions",
+    "description": "The CSV log is the source of truth. Git history is the audit trail. Alerts are helpful but optional."
+  },
+  "tools": [
+    {
+      "name": "log_results",
+      "file": "log_results.py",
+      "docstring": "CSV logging tool for uptime check results.\n\nAppends check results to a CSV file, creating it with headers if it doesn't exist.",
+      "arguments": [
+        {
+          "name": "results",
+          "cli_flag": "--results",
+          "positional": false,
+          "required": true,
+          "help": "JSON file or string with check results",
+          "type": "str"
+        },
+        {
+          "name": "log_file",
+          "cli_flag": "--log-file",
+          "positional": false,
+          "default": "logs/uptime_log.csv",
+          "help": "CSV log file path",
+          "required": false,
+          "type": "str"
+        }
+      ],
+      "env_vars": [],
+      "output": {
+        "formats": [
+          "csv"
+        ]
+      },
+      "imports": [
+        "argparse",
+        "csv",
+        "json",
+        "logging",
+        "pathlib",
+        "sys",
+        "typing"
+      ],
+      "import_safety": {
+        "safe": true,
+        "issues": []
+      }
+    },
+    {
+      "name": "monitor",
+      "file": "monitor.py",
+      "docstring": "Website uptime monitor tool.\n\nPerforms HTTP GET requests to configured URLs and measures response times.\nReturns structured JSON with check results for each URL.",
+      "arguments": [
+        {
+          "name": "urls",
+          "cli_flag": "--urls",
+          "positional": false,
+          "nargs": "+",
+          "required": true,
+          "help": "URLs to check",
+          "type": "str"
+        },
+        {
+          "name": "timeout",
+          "cli_flag": "--timeout",
+          "positional": false,
+          "type": "int",
+          "default": 30,
+          "help": "Request timeout (seconds)",
+          "required": false
+        }
+      ],
+      "env_vars": [],
+      "output": {
+        "formats": [
+          "json",
+          "stdout"
+        ]
+      },
+      "imports": [
+        "argparse",
+        "datetime",
+        "json",
+        "logging",
+        "requests",
+        "sys",
+        "time",
+        "typing"
+      ],
+      "import_safety": {
+        "safe": true,
+        "issues": []
+      }
+    },
+    {
+      "name": "telegram_alert",
+      "file": "telegram_alert.py",
+      "docstring": "Telegram alert tool for website downtime notifications.\n\nSends Telegram messages when monitored sites go down.\nOptional: only runs if TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID are set.",
+      "arguments": [
+        {
+          "name": "results",
+          "cli_flag": "--results",
+          "positional": false,
+          "required": true,
+          "help": "JSON file or string with check results",
+          "type": "str"
+        }
+      ],
+      "env_vars": [
+        {
+          "name": "TELEGRAM_BOT_TOKEN",
+          "required": false,
+          "default": ""
+        },
+        {
+          "name": "TELEGRAM_CHAT_ID",
+          "required": false,
+          "default": ""
+        }
+      ],
+      "output": {
+        "formats": [
+          "json"
+        ]
+      },
+      "imports": [
+        "argparse",
+        "json",
+        "logging",
+        "os",
+        "pathlib",
+        "requests",
+        "sys",
+        "typing"
+      ],
+      "import_safety": {
+        "safe": true,
+        "issues": []
+      }
+    }
+  ],
+  "workflow": {
+    "steps": [
+      {
+        "step_id": "1",
+        "title": "Check Websites",
+        "tools_referenced": [
+          "monitor"
+        ],
+        "inputs": [],
+        "outputs": [],
+        "description": "Perform HTTP GET requests to each configured URL and measure response times.\n\n**Delegate to:** `monitoring-specialist` subagent\n\n1. For each URL in the configured list:\n   - Send HTTP GET request with configured timeout\n   - Measure response time using monotonic clock\n   - Determine status:\n     - **HTTP 200-299**: Site is up\n     - **All other codes**: Site is down\n     - **Connection failure**: status_code = 0, is_up = false\n2. Collect all results into a list of check objects\n3. Return results as JSON for next step\n\n**Tool**: `tools/monitor.py`\n\n**Decision point**: **If any site check fails (timeout, DNS error, connection refused)**:\n- **Action**: Log the failure as status_code=0, response_time=-1, is_up=false\n- **Continue**: Process remaining URLs (don't let one failure kill the batch)\n\n**Failure mode**: All URLs fail to connect (network outage, DNS failure)\n**Fallback**: Record all failures with status_code=0, continue to logging step (empty data is still valid data)\n\n---"
+      },
+      {
+        "step_id": "2",
+        "title": "Log Results",
+        "tools_referenced": [
+          "log_results"
+        ],
+        "inputs": [],
+        "outputs": [],
+        "description": "Append check results to CSV log file, creating the file with headers if it doesn't exist.\n\n**Delegate to:** `data-logger-specialist` subagent\n\n1. Check if `logs/uptime_log.csv` exists:\n   - **If missing**: Create file with CSV headers (timestamp, url, status_code, response_time_ms, is_up)\n   - **If exists**: Open in append mode\n2. For each check result from Step 1:\n   - Write row to CSV with all fields\n3. Close file (ensure data is flushed to disk)\n4. Verify write succeeded (file size increased)\n\n**Tool**: `tools/log_results.py`\n\n**Decision point**: **If CSV file is locked or write fails**:\n- **Action**: Retry once after 2-second delay\n- **If retry fails**: Raise exception (MUST NOT lose data)\n\n**Failure mode**: File write error (permissions, disk full, file locked)\n**Fallback**: Retry once, then fail workflow with clear error message. Data loss is unacceptable \u2014 fail loudly.\n\n---"
+      },
+      {
+        "step_id": "3",
+        "title": "Send Alerts (Optional)",
+        "tools_referenced": [
+          "telegram_alert"
+        ],
+        "inputs": [],
+        "outputs": [],
+        "description": "Send Telegram alerts for any sites that are down. Only runs if TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID are configured.\n\n**Delegate to:** `alert-specialist` subagent\n\n1. Check if Telegram credentials are configured:\n   - **If missing**: Skip this step silently (log \"Telegram not configured\")\n   - **If present**: Continue to alert logic\n2. Filter check results to only down sites (is_up == false)\n3. **If no down sites**: Skip alert sending, log \"All sites up\"\n4. **If down sites exist**:\n   - For each down site:\n     - Format alert message with URL, status code, timestamp\n     - Send via Telegram Bot API\n     - Log success or failure\n5. Return summary of alerts sent\n\n**Tool**: `tools/telegram_alert.py`\n\n**Decision point**: **If Telegram API call fails (rate limit, network error, invalid token)**:\n- **Action**: Log error to stderr, continue workflow\n- **Do NOT fail workflow**: Alerting is enhancement, not requirement\n\n**Failure mode**: Telegram API unreachable or returns error\n**Fallback**: Log error, skip alerts, continue workflow. Monitoring data is still logged and committed.\n\n---"
+      },
+      {
+        "step_id": "4",
+        "title": "Commit Results",
+        "tools_referenced": [
+          "monitor"
+        ],
+        "inputs": [],
+        "outputs": [],
+        "description": "Stage CSV file and commit to repository with descriptive message.\n\n**No subagent delegation** \u2014 Main agent uses git CLI directly\n\n1. Configure git identity (github-actions bot)\n2. Stage ONLY `logs/uptime_log.csv` (never `git add -A`)\n3. Create commit with message format: `chore(uptime): log check results [timestamp]`\n4. Pull with rebase (handle rare concurrent commits)\n5. Push to origin/main\n6. Verify push succeeded\n\n**Tool**: `git` CLI via GitHub Actions\n\n**Decision point**: **If git push fails (conflict, network error)**:\n- **Action**: Pull with rebase and retry push up to 3 times\n- **If all retries fail**: Fail workflow (prevents data loss on next run)\n\n**Failure mode**: Git push conflict or network failure\n**Fallback**: Retry with backoff. GitHub Actions concurrency setting prevents simultaneous runs, making conflicts rare.\n\n---\n\n## Notes\n\n### Execution Paths\n\nThis system supports three execution paths:\n\n1. **Scheduled cron** (primary): Runs every 5 minutes via GitHub Actions schedule trigger\n2. **Manual dispatch**: Trigger via GitHub Actions UI or API for testing\n3. **Local CLI** (development): Run tools directly with Python for testing\n\n### Cost Considerations\n\n- **GitHub Actions**: ~1,440 minutes/month for 5-minute checks (well within 2,000/month free tier)\n- **Storage**: CSV file grows ~150 bytes per check = ~6.5 MB/month (negligible)\n- **No LLM costs**: This is a pure monitoring system, no AI calls\n\n### MCP Dependencies\n\n**None**. This system uses only:\n- Python stdlib (`csv`, `json`, `pathlib`, `argparse`, `logging`)\n- `requests` library for HTTP\n- `git` CLI (standard in GitHub Actions)\n\n### Character\n\nThis is a **simple, reliable, unglamorous monitoring system**. No fancy features, no complex logic, just:\n- Check URLs\n- Log results\n- Commit to Git\n- Optionally alert\n\nThe simplicity is the feature. Git history IS the monitoring dashboard.\n\n### Failure Philosophy\n\n- **Data logging failures halt the workflow** \u2014 never lose monitoring data\n- **Alert failures do NOT halt the workflow** \u2014 monitoring continues even if alerts fail\n- **Per-URL error isolation** \u2014 one failed check doesn't prevent logging others\n\n### Extensibility\n\nTo add more URLs, edit `.github/workflows/monitor.yml` and update the `--urls` argument.\nTo add authentication, modify `tools/monitor.py` to accept auth headers via GitHub Secrets.\nTo change check frequency, edit the cron expression in the workflow file."
+      }
+    ]
+  },
+  "sample_inputs": [],
+  "pipeline_order": [
+    "monitor",
+    "log_results",
+    "telegram_alert"
+  ]
+}

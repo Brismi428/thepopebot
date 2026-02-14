@@ -1,0 +1,19 @@
+{
+  "archetype": "professional-saas",
+  "system_name": "Website Uptime Checker \u2014 Operating Instructions",
+  "system_description": "The CSV log is the source of truth. Git history is the audit trail. Alerts are helpful but optional.",
+  "fonts": {
+    "heading": "Space Grotesk",
+    "body": "DM Sans",
+    "mono": "JetBrains Mono"
+  },
+  "palette": "cool-tech",
+  "hero": {
+    "badge": "3 Tools Available",
+    "title": "Website Uptime Checker \u2014 Operating Instructions",
+    "description": "The CSV log is the source of truth. Git history is the audit trail. Alerts are helpful but optional.",
+    "code_preview": "$ curl -X POST /api/run-pipeline\n  -d '{\"input\": \"data\"}'\n\n// 3 tools chained automatically"
+  },
+  "features_title": "Tools",
+  "cta_description": "Run Website Uptime Checker \u2014 Operating Instructions tools individually or as a complete pipeline."
+}

@@ -1,0 +1,264 @@
+{
+  "overall": "passed",
+  "levels_run": 4,
+  "results": [
+    {
+      "level": 1,
+      "name": "Syntax",
+      "checks": [
+        {
+          "passed": true,
+          "message": "Python syntax OK",
+          "file": "api/main.py"
+        },
+        {
+          "passed": true,
+          "message": "Python syntax OK",
+          "file": "api/models/__init__.py"
+        },
+        {
+          "passed": true,
+          "message": "Python syntax OK",
+          "file": "api/models/log_results.py"
+        },
+        {
+          "passed": true,
+          "message": "Python syntax OK",
+          "file": "api/models/monitor.py"
+        },
+        {
+          "passed": true,
+          "message": "Python syntax OK",
+          "file": "api/models/telegram_alert.py"
+        },
+        {
+          "passed": true,
+          "message": "TypeScript/JavaScript syntax OK",
+          "file": "frontend/src/lib/api.ts"
+        },
+        {
+          "passed": true,
+          "message": "TypeScript/JavaScript syntax OK",
+          "file": "frontend/src/app/(dashboard)/dashboard/page.tsx"
+        },
+        {
+          "passed": true,
+          "message": "TypeScript/JavaScript syntax OK",
+          "file": "frontend/src/app/(dashboard)/layout.tsx"
+        },
+        {
+          "passed": true,
+          "message": "TypeScript/JavaScript syntax OK",
+          "file": "frontend/src/app/(dashboard)/log-results/page.tsx"
+        },
+        {
+          "passed": true,
+          "message": "TypeScript/JavaScript syntax OK",
+          "file": "frontend/src/app/(dashboard)/monitor/page.tsx"
+        },
+        {
+          "passed": true,
+          "message": "TypeScript/JavaScript syntax OK",
+          "file": "frontend/src/app/(dashboard)/pipeline/page.tsx"
+        },
+        {
+          "passed": true,
+          "message": "TypeScript/JavaScript syntax OK",
+          "file": "frontend/src/app/(dashboard)/telegram-alert/page.tsx"
+        },
+        {
+          "passed": true,
+          "message": "TypeScript/JavaScript syntax OK",
+          "file": "frontend/src/app/(marketing)/layout.tsx"
+        },
+        {
+          "passed": true,
+          "message": "TypeScript/JavaScript syntax OK",
+          "file": "frontend/src/app/(marketing)/page.tsx"
+        },
+        {
+          "passed": true,
+          "message": "TypeScript/JavaScript syntax OK",
+          "file": "frontend/src/app/layout.tsx"
+        },
+        {
+          "passed": true,
+          "message": "TypeScript/JavaScript syntax OK",
+          "file": "frontend/src/components/PipelineWizard.tsx"
+        },
+        {
+          "passed": true,
+          "message": "TypeScript/JavaScript syntax OK",
+          "file": "frontend/src/components/ResultViewer.tsx"
+        },
+        {
+          "passed": true,
+          "message": "TypeScript/JavaScript syntax OK",
+          "file": "frontend/src/components/ToolForm.tsx"
+        },
+        {
+          "passed": true,
+          "message": "TypeScript/JavaScript syntax OK",
+          "file": "frontend/next.config.js"
+        },
+        {
+          "passed": true,
+          "message": "TypeScript/JavaScript syntax OK",
+          "file": "frontend/postcss.config.js"
+        },
+        {
+          "passed": true,
+          "message": "TypeScript/JavaScript syntax OK",
+          "file": "frontend/tailwind.config.js"
+        },
+        {
+          "passed": true,
+          "message": "JSON syntax OK",
+          "file": "frontend/package.json"
+        },
+        {
+          "passed": true,
+          "message": "JSON syntax OK",
+          "file": "frontend/tsconfig.json"
+        },
+        {
+          "passed": true,
+          "message": "JSON syntax OK",
+          "file": "system_interface.json"
+        }
+      ],
+      "passed": true
+    },
+    {
+      "level": 2,
+      "name": "Cross-Reference",
+      "checks": [
+        {
+          "check": "api_route:log_results",
+          "passed": true,
+          "message": "API route found for log_results"
+        },
+        {
+          "check": "api_route:monitor",
+          "passed": true,
+          "message": "API route found for monitor"
+        },
+        {
+          "check": "api_route:telegram_alert",
+          "passed": true,
+          "message": "API route found for telegram_alert"
+        },
+        {
+          "check": "pipeline_endpoint",
+          "passed": true,
+          "message": "Pipeline endpoint found"
+        },
+        {
+          "check": "health_endpoint",
+          "passed": true,
+          "message": "Health endpoint found"
+        },
+        {
+          "check": "pydantic_model:log_results",
+          "passed": true,
+          "message": "Pydantic model found for log_results"
+        },
+        {
+          "check": "pydantic_model:monitor",
+          "passed": true,
+          "message": "Pydantic model found for monitor"
+        },
+        {
+          "check": "pydantic_model:telegram_alert",
+          "passed": true,
+          "message": "Pydantic model found for telegram_alert"
+        },
+        {
+          "check": "frontend_page:log_results",
+          "passed": true,
+          "message": "Frontend page found for log_results"
+        },
+        {
+          "check": "frontend_page:monitor",
+          "passed": true,
+          "message": "Frontend page found for monitor"
+        },
+        {
+          "check": "frontend_page:telegram_alert",
+          "passed": true,
+          "message": "Frontend page found for telegram_alert"
+        },
+        {
+          "check": "model_field:log_results.results",
+          "passed": true,
+          "message": "Model field found: results"
+        },
+        {
+          "check": "model_field:log_results.log_file",
+          "passed": true,
+          "message": "Model field found: log_file"
+        },
+        {
+          "check": "model_field:monitor.urls",
+          "passed": true,
+          "message": "Model field found: urls"
+        },
+        {
+          "check": "model_field:monitor.timeout",
+          "passed": true,
+          "message": "Model field found: timeout"
+        },
+        {
+          "check": "model_field:telegram_alert.results",
+          "passed": true,
+          "message": "Model field found: results"
+        }
+      ],
+      "passed": true
+    },
+    {
+      "level": 3,
+      "name": "Accessibility",
+      "checks": [
+        {
+          "check": "accessibility_overview",
+          "passed": true,
+          "message": "Accessibility checks passed across 12 files"
+        }
+      ],
+      "passed": true
+    },
+    {
+      "level": 4,
+      "name": "Smoke",
+      "checks": [
+        {
+          "check": "api_import",
+          "passed": true,
+          "message": "api/main.py imports successfully"
+        },
+        {
+          "check": "app_object",
+          "passed": true,
+          "message": "FastAPI app object found"
+        },
+        {
+          "check": "health_route",
+          "passed": true,
+          "message": "GET /api/health route registered"
+        },
+        {
+          "check": "pipeline_route",
+          "passed": true,
+          "message": "POST /api/run-pipeline route registered"
+        },
+        {
+          "check": "total_routes",
+          "passed": true,
+          "message": "9 routes registered: /openapi.json, /docs, /docs/oauth2-redirect, /redoc, /api/health, /api/log-results, /api/monitor, /api/telegram-alert, /api/run-pipeline"
+        }
+      ],
+      "passed": true
+    }
+  ]
+}

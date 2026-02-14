@@ -1,0 +1,10 @@
+# Caddy route snippet for website-uptime-checker-—-operating-instructions
+# Option A: Subdomain routing
+uptime.example.com {
+    reverse_proxy localhost:8000
+}
+
+# Option B: Sub-path routing (add to existing Caddyfile)
+# handle_path /website-uptime-checker-—-operating-instructions/* {
+#     reverse_proxy localhost:8000
+# }
