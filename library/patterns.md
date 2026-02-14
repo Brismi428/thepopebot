@@ -1240,6 +1240,40 @@ Often paired with:
 - **Platform API** -- Publishing integration (Instagram Graph API, LinkedIn, Twitter, etc.)
 - **Python** -- Tool orchestration, data transformation
 
+---
+
+## 14. Social Media Queue Processor with Per-Post Error Isolation
+
+**Summary:** A batch content publishing system that processes a queue of social media posts, validates each independently, publishes via platform API (two-step process for Instagram), isolates failures, and generates detailed reports — all with intelligent retry strategies based on error classification.
+
+### When to Use
+
+- Publishing content to social media platforms (Instagram, Twitter, LinkedIn, etc.)
+- Need to process batches of posts with independent validation
+- Want per-post error isolation (one failure doesn't stop the batch)
+- Require intelligent retry strategies based on error types (rate limits vs auth failures)
+- Need detailed audit trail of every publish attempt
+- Publishing schedule is regular (e.g., every 15 minutes) via GitHub Actions
+
+### Steps
+
+1. **Load queue** -- Read all content files from `input/queue/*.json`
+2. **Validate each post** -- Check caption length, hashtags, media URL format (delegate to validator subagent)
+3. **For each validated post:**
+   - **Create container** -- Platform-specific (Instagram requires two-step: create → publish)
+   - **Publish container** -- Make post go live via API
+   - **Handle errors** -- Classify error (transient vs permanent), write to failed queue if needed
+4. **Log results** -- Write success to `output/published/`, failures to `output/failed/`
+5. **Generate report** -- Aggregate all results into daily markdown summary
+6. **Commit results** -- Git commit with specific file paths (never `git add -A`)
+
+### Key Tools / MCPs
+
+- **Platform API Client** -- REST calls with retry logic (httpx + tenacity)
+- **Subagent delegation** -- Default mechanism (validator, publisher, fallback-handler, report-generator)
+- **Git** -- Commit results with specific paths for audit trail
+- **Agent Teams** -- Optional parallelization for batches of 3+ posts
+
 ### GitHub Actions Trigger
 
 ```yaml
@@ -1253,6 +1287,17 @@ on:
       publishing_mode: choice[auto_publish, content_pack_only]
   issues:
     types: [opened, labeled]  # Agent HQ pattern
+
+    - cron: '*/15 * * * *'   # Every 15 minutes (process queue)
+  workflow_dispatch:
+    inputs:
+      content:
+        description: 'Inline JSON for immediate publish'
+        type: string
+      use_parallel:
+        description: 'Use Agent Teams for batch'
+        type: boolean
+        default: false
 ```
 
 ### Example Use Cases
@@ -1383,6 +1428,228 @@ ELSE:  # mode == "content_pack_only"
 - **Rolling archive with retention** -- 12-week retention prevents repo bloat while maintaining history
 - **Three execution paths required** -- CLI (dev), Actions (prod), Agent HQ (user-driven) cover all use cases
 
+- Instagram Business account content publisher (image posts)
+- Twitter thread publisher (multi-post batches)
+- LinkedIn company page publisher
+- Facebook page poster
+- Multi-platform cross-publisher (same content to 3+ platforms)
+
+### Subagent Architecture
+
+**Pattern uses 4 specialist subagents** (default delegation mechanism):
+
+- **content-validator-specialist** -- Pre-publish validation (caption, hashtags, media)
+- **publisher-specialist** -- Platform API operations (create, publish, retry logic)
+- **fallback-handler-specialist** -- Error classification and failed post management
+- **report-generator-specialist** -- Aggregate results into markdown reports
+
+**Subagents are the DEFAULT.** Delegate every major phase to a specialist.
+
+### Agent Teams Parallelization
+
+**When:** Queue has 3+ posts AND `use_parallel` input is true  
+**Why:** Each post is independent (no data dependencies)  
+**Benefit:** 2-7x speedup (10 posts: 70s sequential → 10-12s parallel)  
+**Trade-off:** None (same token cost, just parallel execution)
+
+**Team structure:**
+- Team lead: Creates task list, spawns teammates, collects results
+- Teammates: Each processes one post (validate → publish → log)
+- Merge: Simple collection (no conflict resolution)
+
+**Sequential fallback:** Always available (default mode for 1-2 posts)
+
+### Error Handling: Classification Strategy
+
+**Key insight:** Classify errors to determine retry strategy.
+
+| Error Type | Example Codes | Action |
+|------------|---------------|--------|
+| **Transient** | 429 (rate limit), 500-504 (server error) | Retry with exponential backoff (3x), then queue for next run |
+| **Permanent** | 400 (bad request), 100 (invalid container) | Write to failed queue immediately, no retry |
+| **Critical** | 190 (invalid token), 403 (permission denied) | **HALT WORKFLOW** — all posts will fail |
+
+**Retry logic (built into tools):**
+```python
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=2, max=30),
+    retry=retry_if_exception_type(RetryableError)
+)
+def api_call():
+    # Platform API call with automatic retry
+    pass
+```
+
+**You do NOT retry manually** — tools handle all retries. Check the result and act based on error classification.
+
+### Per-Post Error Isolation
+
+**Critical pattern:** One failed post does NOT stop the batch.
+
+```python
+for post in queue:
+    try:
+        validate_result = validate(post)
+        if not validate_result.is_valid:
+            write_failed(post, validate_result.errors)
+            continue  # Skip to next post
+        
+        publish_result = publish(post)
+        if publish_result.status == "success":
+            write_published(post, publish_result)
+        else:
+            write_failed(post, publish_result.error)
+    except CriticalError as e:
+        # Only HALT for critical errors (invalid token)
+        log_critical(e)
+        break  # Stop processing remaining posts
+    except Exception as e:
+        # Log unexpected errors but continue
+        write_failed(post, str(e))
+        continue
+```
+
+**Partial success is acceptable.** Better to publish 8/10 posts than fail all 10.
+
+### Instagram-Specific Two-Step Publish
+
+Instagram Graph API requires two calls:
+
+**Step 1: Create container**
+```bash
+POST /{business_account_id}/media
+{
+  "image_url": "https://...",
+  "caption": "...",
+  "access_token": "..."
+}
+# Returns: {"id": "creation_id"}
+```
+
+**Step 2: Publish container** (after 1-2 second delay)
+```bash
+POST /{business_account_id}/media_publish
+{
+  "creation_id": "...",
+  "access_token": "..."
+}
+# Returns: {"id": "post_id"}
+```
+
+**Key insight:** If step 1 succeeds but step 2 fails, write to failed queue with BOTH error details. Don't retry step 1 — container already exists.
+
+### Failed Post Recovery
+
+**User workflow:**
+1. Review error in `output/failed/{timestamp}_{hash}.json`
+2. Fix the issue (update caption, replace image URL, etc.)
+3. Move corrected JSON back to `input/queue/`
+4. Next workflow run retries automatically
+
+**Queue persistence:** Failed posts remain in `output/failed/` until manually moved back to queue or deleted.
+
+### Git Commit Discipline
+
+**CRITICAL RULE:** Only commit files the workflow created.
+
+```bash
+# CORRECT:
+git add output/published/*.json
+git add output/failed/*.json
+git add logs/*.md
+git commit -m "Published 10 posts, 2 failures [2026-02-14 12:00:00]"
+
+# NEVER DO THIS:
+git add -A           # ❌ Stages unintended files
+git add .            # ❌ Stages everything
+git add output/      # ❌ Might stage temp files
+```
+
+**Use specific paths or globs.** Always verify `git status` before committing.
+
+### Rate Limit Awareness
+
+**Platform-specific limits:**
+- **Instagram:** 200 API calls/hour = 100 posts/hour (each post = 2 calls)
+- **Twitter:** 300 posts/3 hours = 100 posts/hour
+- **LinkedIn:** 100 posts/day
+
+**Sustainable schedule:**
+- 15-minute intervals = 4 runs/hour
+- ~20-30 posts per run = 80-120 posts/hour
+- Slight margin below limit to avoid errors
+
+**If rate limits hit frequently:**
+- Reduce frequency (30-minute intervals)
+- Add sleep between posts (spread load)
+- Use multiple API keys/accounts (rotate)
+
+### Performance Characteristics
+
+**Sequential execution:**
+- Validation: 1-2s per post (includes HEAD request to media URL)
+- API calls: 2-3s per call (create + publish for Instagram)
+- Logging: <1s per post
+- **Total: ~7-8 seconds per post**
+
+**Parallel execution (Agent Teams):**
+- 10 posts: ~10-12 seconds (all in parallel)
+- **Speedup: 7x**
+
+### Reporting Pattern
+
+Daily markdown reports with:
+- **Summary stats** (total, success count, failure count, success rate)
+- **Published posts** (table with timestamps, post IDs, permalinks, captions)
+- **Failed posts** (error breakdown by type, details table with timestamps and messages)
+- **Recommendations** (actionable advice based on failure patterns)
+
+**Example:**
+```markdown
+# Instagram Publish Report - 2026-02-14
+
+## Summary
+- Total attempts: 15
+- Successful: 13 (86.7%)
+- Failed: 2
+
+## Failed Posts
+### Error Breakdown
+- 429: 1 occurrence (rate limit)
+- 400: 1 occurrence (invalid image URL)
+
+## Recommendations
+⚠️ 1 rate limit error - consider reducing frequency
+⚠️ 1 validation error - check failed post for invalid image URL
+```
+
+### Security Notes
+
+- **Secrets:** Never commit API tokens (use GitHub Secrets or .env)
+- **Token permissions:** Use minimum required (e.g., `instagram_content_publish` only)
+- **Rate limits:** Respect platform limits to avoid temporary bans
+- **Audit trail:** Git history logs every publish attempt
+
+### Failure Handling Best Practices
+
+1. **Validate before API calls** — Catch errors early to save API quota
+2. **Classify errors immediately** — Retry logic depends on error type
+3. **Write failures to disk** — Don't lose failed posts (Git persistence)
+4. **Provide actionable recommendations** — Tell users HOW to fix each error type
+5. **Generate reports** — Daily summaries help spot patterns (repeated rate limits, auth issues)
+
+### Key Learnings (from instagram-publisher build)
+
+- **Subagent delegation is the default** — Use subagents for all major phases (not Agent Teams)
+- **Agent Teams is for parallelization only** — Not for delegation/specialization
+- **Per-post error isolation is critical** — Never let one failure stop the batch
+- **Error classification drives retry strategy** — Transient (retry), permanent (skip), critical (halt)
+- **Two-step publish requires careful state tracking** — If step 1 succeeds but step 2 fails, don't retry step 1
+- **Git commit discipline prevents accidents** — Always use specific paths, never `git add -A`
+- **Rate limit respect is non-negotiable** — Platform bans are worse than slower publishing
+- **Reports drive continuous improvement** — Daily summaries reveal patterns humans can optimize
+
 ### Related Patterns
 
 Combines elements of:
@@ -1394,3 +1661,32 @@ Combines elements of:
 Often paired with:
 - **Intake > Enrich > Deliver** (enrich with brand voice)
 - **Monitor > Detect > Alert** (quality score monitoring over time)
+
+- **Intake > Enrich > Deliver** (base pipeline structure)
+- **Fan-Out > Process > Merge** (parallel processing via Agent Teams)
+- **Monitor > Detect > Alert** (error detection and classification)
+
+Often chained with:
+- **Marketing Pipeline** (upstream: lead scoring → content generation → social publish)
+- **Content Repurpose Engine** (upstream: blog → platform-optimized variants → social publish)
+
+### Anti-Patterns to Avoid
+
+- ❌ **Batch retry on first failure** — isolate errors per-post instead
+- ❌ **Retry permanent errors** — burns API quota for no reason
+- ❌ **Skip validation to save time** — catching errors early is cheaper
+- ❌ **Use `git add -A`** — stages unintended files, breaks automation
+- ❌ **Ignore rate limits** — platforms will ban you
+- ❌ **Log to stdout only** — write results to disk for audit trail
+- ❌ **Agent Teams for delegation** — use subagents for specialization, Agent Teams for parallelization
+
+### Cost Considerations
+
+**Per 100 posts/day:**
+- Platform API calls: Usually FREE (within rate limits)
+- GitHub Actions: ~15 minutes/day = 450 min/month (within 2,000/month free tier)
+- Optional LLM enrichment (hashtag suggestions): ~$1/day = $30/month
+
+**Recommendation:** Start without enrichment. Add AI features only if needed.
+
+---

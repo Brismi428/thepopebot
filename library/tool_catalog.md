@@ -3920,3 +3920,413 @@ def generate_content_pack(content: dict, review: dict, theme: str, output_dir: s
 
 **Key Pattern:** Dual-format output serves both human review (Markdown) and automation (JSON), plus manual fallback (checklist).
 
+### `instagram_container_publisher`
+
+**Description:** Instagram-specific two-step publisher: creates a media container (associates image URL with caption), then publishes the container to make the post go live. Implements intelligent retry logic based on error code classification.
+
+| Field | Detail |
+|---|---|
+| **Input** | `image_url: str`, `caption: str`, `business_account_id: str`, `access_token: str` |
+| **Output** | `dict` with `status: "published"/"failed"`, `post_id: str` (success), or `error_code: str`, `error_message: str`, `retryable: bool` (failure) |
+| **Key Dependencies** | `httpx`, `tenacity` |
+| **MCP Alternative** | None standard; Instagram Graph API via REST |
+
+**Key Pattern:** Two-step process with error classification.
+
+```python
+import os, httpx, time
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+
+GRAPH_API_BASE = "https://graph.facebook.com/v18.0"
+
+class RetryableError(Exception):
+    """Transient error (rate limit, server error)."""
+    pass
+
+class NonRetryableError(Exception):
+    """Permanent error (invalid token, bad request)."""
+    pass
+
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=2, max=30),
+    retry=retry_if_exception_type(RetryableError),
+    reraise=True,
+)
+def create_container_with_retry(image_url: str, caption: str, 
+                                 business_account_id: str, access_token: str) -> dict:
+    """Step 1: Create media container."""
+    url = f"{GRAPH_API_BASE}/{business_account_id}/media"
+    payload = {
+        "image_url": image_url,
+        "caption": caption,
+        "access_token": access_token,
+    }
+    
+    resp = httpx.post(url, json=payload, timeout=30.0)
+    
+    # Classify error for retry decision
+    if resp.status_code == 429:
+        raise RetryableError("Rate limit exceeded")
+    elif resp.status_code in (190, 400, 401, 403):
+        raise NonRetryableError(f"Auth/validation error: {resp.text}")
+    
+    resp.raise_for_status()
+    return {"creation_id": resp.json()["id"]}
+
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=3, max=30),
+    retry=retry_if_exception_type(RetryableError),
+    reraise=True,
+)
+def publish_container_with_retry(creation_id: str, business_account_id: str,
+                                  access_token: str) -> dict:
+    """Step 2: Publish container (after 2s delay for processing)."""
+    time.sleep(2)  # Instagram needs time to process the container
+    
+    url = f"{GRAPH_API_BASE}/{business_account_id}/media_publish"
+    payload = {
+        "creation_id": creation_id,
+        "access_token": access_token,
+    }
+    
+    resp = httpx.post(url, json=payload, timeout=30.0)
+    
+    if resp.status_code == 429:
+        raise RetryableError("Rate limit exceeded")
+    elif resp.status_code == 400:
+        error_msg = resp.json().get("error", {}).get("message", "")
+        if "not ready" in error_msg.lower():
+            raise RetryableError("Container not ready yet")
+        raise NonRetryableError(f"Invalid container: {error_msg}")
+    elif resp.status_code in (190, 401, 403):
+        raise NonRetryableError(f"Auth error: {resp.text}")
+    
+    resp.raise_for_status()
+    post_id = resp.json()["id"]
+    permalink = f"https://www.instagram.com/p/{post_id}/"
+    return {"post_id": post_id, "permalink": permalink}
+
+def main(image_url: str, caption: str, business_account_id: str,
+         access_token: str | None = None) -> dict:
+    """
+    Publish image to Instagram (full two-step process).
+    
+    Returns:
+        Success: {"status": "published", "post_id": "...", "permalink": "..."}
+        Failure: {"status": "failed", "error_code": "...", "error_message": "...", "retryable": bool}
+    """
+    access_token = access_token or os.environ.get("INSTAGRAM_ACCESS_TOKEN")
+    
+    try:
+        # Step 1: Create container
+        container = create_container_with_retry(
+            image_url, caption, business_account_id, access_token
+        )
+        
+        # Step 2: Publish container
+        result = publish_container_with_retry(
+            container["creation_id"], business_account_id, access_token
+        )
+        
+        return {"status": "published", **result}
+        
+    except NonRetryableError as e:
+        error_code = "190" if "auth" in str(e).lower() else "400"
+        return {
+            "status": "failed",
+            "error_code": error_code,
+            "error_message": str(e),
+            "retryable": False,
+        }
+    except RetryableError as e:
+        return {
+            "status": "failed",
+            "error_code": "429",
+            "error_message": str(e),
+            "retryable": True,
+        }
+    except Exception as e:
+        return {
+            "status": "failed",
+            "error_code": "unknown",
+            "error_message": str(e),
+            "retryable": False,
+        }
+```
+
+**Key learnings:**
+- Instagram requires TWO API calls (create → publish) — don't retry step 1 if step 2 fails
+- Container processing takes 1-2 seconds — must wait before publishing
+- Error classification is CRITICAL — retryable (429, 500+) vs non-retryable (190, 400)
+- Rate limit is 200 calls/hour = 100 posts/hour
+- Tools should return structured error JSON — makes classification easy for caller
+
+---
+
+### `social_content_validator`
+
+**Description:** Pre-publish content validator for social media platforms. Checks caption length, hashtag count, media URL accessibility, and format requirements. Returns detailed validation report without raising exceptions.
+
+| Field | Detail |
+|---|---|
+| **Input** | `content: dict`, `platform: str = "instagram"`, `check_media: bool = True` |
+| **Output** | `dict` with `is_valid: bool`, `errors: list[str]`, `warnings: list[str]` |
+| **Key Dependencies** | `httpx` (for media URL validation) |
+| **MCP Alternative** | None |
+
+```python
+import re, httpx
+
+# Platform-specific limits
+PLATFORM_LIMITS = {
+    "instagram": {"caption": 2200, "hashtags": 30},
+    "twitter": {"caption": 280, "hashtags": 10},
+    "linkedin": {"caption": 3000, "hashtags": 5},
+}
+
+def validate_content(content: dict, platform: str = "instagram",
+                     check_media: bool = True) -> dict:
+    """
+    Validate social media content against platform requirements.
+    
+    NEVER raises exceptions — always returns a report dict.
+    """
+    errors, warnings = [], []
+    limits = PLATFORM_LIMITS.get(platform, PLATFORM_LIMITS["instagram"])
+    
+    # Validate caption
+    caption = content.get("caption", "")
+    if not caption:
+        errors.append("Caption cannot be empty")
+    elif len(caption) > limits["caption"]:
+        errors.append(f"Caption exceeds {limits['caption']} character limit (current: {len(caption)})")
+    
+    # Validate hashtags
+    hashtags_in_caption = re.findall(r"#\w+", caption)
+    hashtags_array = content.get("hashtags", [])
+    all_hashtags = list(set(hashtags_in_caption + hashtags_array))
+    
+    if len(all_hashtags) > limits["hashtags"]:
+        errors.append(f"Too many hashtags: {len(all_hashtags)} (max {limits['hashtags']})")
+    elif len(all_hashtags) == 0:
+        warnings.append("No hashtags found - consider adding for better reach")
+    
+    # Validate media URL
+    if check_media and "image_url" in content:
+        image_url = content["image_url"]
+        if not image_url.startswith(("http://", "https://")):
+            errors.append("Invalid image URL: must be HTTP/HTTPS")
+        else:
+            try:
+                resp = httpx.head(image_url, timeout=5, follow_redirects=True)
+                if resp.status_code != 200:
+                    errors.append(f"Image URL not accessible: status {resp.status_code}")
+                
+                content_type = resp.headers.get("content-type", "").lower()
+                if not content_type.startswith("image/"):
+                    errors.append(f"URL does not point to an image (Content-Type: {content_type})")
+            except Exception as e:
+                errors.append(f"Image URL check failed: {str(e)}")
+    
+    # Validate required fields (platform-specific)
+    required = ["caption", "image_url"] if platform == "instagram" else ["caption"]
+    for field in required:
+        if field not in content or not content[field]:
+            errors.append(f"Missing required field: {field}")
+    
+    return {
+        "is_valid": len(errors) == 0,
+        "errors": errors,
+        "warnings": warnings,
+    }
+```
+
+**Key learnings:**
+- NEVER raise exceptions in validators — return structured report
+- Check media URL accessibility with HEAD request (fast, doesn't download)
+- Extract hashtags from both caption AND hashtags array, then deduplicate
+- Platform-specific limits — use config dict for extensibility
+- Warnings vs errors — warnings don't block publish
+
+---
+
+### `batch_error_isolator`
+
+**Description:** Processes a batch of items with per-item error isolation. If one item fails, the batch continues. Returns aggregated results with success/failure breakdown.
+
+| Field | Detail |
+|---|---|
+| **Input** | `items: list[dict]`, `process_fn: callable`, `halt_on_critical: bool = True` |
+| **Output** | `dict` with `processed: int`, `succeeded: int`, `failed: int`, `results: list[dict]` |
+| **Key Dependencies** | None (stdlib only) |
+| **MCP Alternative** | None |
+
+```python
+from typing import Callable, Any
+
+class CriticalError(Exception):
+    """Error that should halt batch processing."""
+    pass
+
+def batch_process_with_isolation(
+    items: list[Any],
+    process_fn: Callable[[Any], dict],
+    halt_on_critical: bool = True,
+) -> dict:
+    """
+    Process batch with per-item error isolation.
+    
+    Args:
+        items: List of items to process
+        process_fn: Function that processes one item, returns {"status": "success"/"failed", ...}
+        halt_on_critical: Stop batch if CriticalError is raised
+        
+    Returns:
+        Aggregated results with success/failure counts
+    """
+    results = []
+    succeeded = 0
+    failed = 0
+    
+    for i, item in enumerate(items):
+        try:
+            result = process_fn(item)
+            results.append(result)
+            
+            if result.get("status") == "success":
+                succeeded += 1
+            else:
+                failed += 1
+            
+            # Check for critical errors that should halt processing
+            if halt_on_critical and result.get("error_code") in ("190", "403"):
+                # Auth errors mean all subsequent items will fail
+                print(f"CRITICAL ERROR at item {i+1}: {result.get('error_message')}")
+                print(f"Halting batch processing. Remaining items: {len(items) - i - 1}")
+                break
+                
+        except CriticalError as e:
+            print(f"CRITICAL ERROR at item {i+1}: {e}")
+            results.append({
+                "status": "failed",
+                "error": str(e),
+                "critical": True,
+            })
+            failed += 1
+            if halt_on_critical:
+                break
+        except Exception as e:
+            # Non-critical errors: log and continue
+            print(f"ERROR at item {i+1}: {e}")
+            results.append({
+                "status": "failed",
+                "error": str(e),
+                "critical": False,
+            })
+            failed += 1
+            continue
+    
+    return {
+        "processed": len(results),
+        "succeeded": succeeded,
+        "failed": failed,
+        "results": results,
+        "halted": succeeded + failed < len(items),
+    }
+```
+
+**Key learnings:**
+- Per-item isolation prevents one failure from killing the batch
+- Critical errors (auth failures) should halt processing (no point continuing)
+- Catch unexpected exceptions — log and continue (graceful degradation)
+- Return aggregated stats for easy reporting
+- Partial success is success (8/10 published is better than 0/10)
+
+---
+
+### `timestamped_result_writer`
+
+**Description:** Writes result dictionaries to timestamped JSON files in success/failure directories. Automatically creates directories, generates filenames, and adds timestamps.
+
+| Field | Detail |
+|---|---|
+| **Input** | `result: dict`, `base_dir: str = "output"`, `add_timestamp: bool = True` |
+| **Output** | `dict` with `path: str`, `filename: str` |
+| **Key Dependencies** | `pathlib`, `json`, `hashlib` |
+| **MCP Alternative** | None |
+
+```python
+import json, hashlib
+from pathlib import Path
+from datetime import datetime, timezone
+
+def write_result(result: dict, base_dir: str = "output",
+                 add_timestamp: bool = True) -> dict:
+    """
+    Write result to timestamped file in success/failure subdirectory.
+    
+    Directory structure:
+        output/published/{timestamp}_{identifier}.json  (success)
+        output/failed/{timestamp}_{hash}.json           (failure)
+    """
+    try:
+        # Determine subdirectory based on status
+        status = result.get("status", "unknown")
+        subdir = "published" if status in ("success", "published") else "failed"
+        output_dir = Path(base_dir) / subdir
+        output_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Add timestamp if not present
+        if add_timestamp and "timestamp" not in result:
+            result["timestamp"] = datetime.now(timezone.utc).isoformat()
+        
+        # Generate filename
+        timestamp_str = result.get("timestamp", datetime.now(timezone.utc).isoformat())
+        try:
+            ts = datetime.fromisoformat(timestamp_str.replace("Z", "+00:00"))
+            ts_part = ts.strftime("%Y%m%d_%H%M%S")
+        except:
+            ts_part = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        
+        # Identifier: use post_id for success, hash for failure
+        if status in ("success", "published"):
+            identifier = result.get("post_id", "unknown")
+        else:
+            # Hash caption + URL for stable identifierEOF
+echo "✓ Updated library/tool_catalog.md with social media publishing patterns"
+            content = f"{result.get('caption', '')}{result.get('image_url', '')}"
+            identifier = hashlib.md5(content.encode()).hexdigest()[:8]
+        
+        filename = f"{ts_part}_{identifier}.json"
+        file_path = output_dir / filename
+        
+        # Write JSON
+        with open(file_path, "w", encoding="utf-8") as f:
+            json.dump(result, f, indent=2, ensure_ascii=False)
+        
+        return {
+            "path": str(file_path.resolve()),
+            "filename": filename,
+        }
+        
+    except Exception as e:
+        # Don't raise — log error and return failure status
+        print(f"ERROR writing result: {e}")
+        return {
+            "path": "",
+            "filename": "",
+            "error": str(e),
+        }
+```
+
+**Key learnings:**
+- Timestamped filenames prevent collisions
+- Success/failure subdirectories make audit trail clear
+- Hash-based identifiers for failures (stable, deterministic)
+- NEVER raise exceptions — return error status instead (graceful degradation)
+- Auto-create directories (mkdir -p behavior)
+
+---
+

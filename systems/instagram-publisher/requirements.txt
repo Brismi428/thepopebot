@@ -1,0 +1,17 @@
+# Instagram Publisher - Python Dependencies
+
+# HTTP client with retry support
+httpx>=0.27.0
+
+# Retry logic and exponential backoff
+tenacity>=8.2.0
+
+# Image validation (for format checking)
+# Pillow>=10.0.0  # Commented out - not currently used
+
+# Optional: LLM APIs for content enrichment
+anthropic>=0.18.0
+openai>=1.12.0
+
+# Optional: Firecrawl for advanced web scraping
+# firecrawl-py>=0.0.5  # Commented out - not currently used
