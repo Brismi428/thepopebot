@@ -1,215 +1,240 @@
 name: "weekly-instagram-content-publisher"
 description: |
-  WAT System PRP (Product Requirements Prompt) — Weekly Instagram Content Generation & Publishing Pipeline
+  Weekly Instagram Content Publisher — An AI-powered social media content generation system that creates Instagram-ready content packs (captions, hashtags, creative briefs, image prompts) based on brand voice and weekly themes, runs multi-dimensional quality review checks, and either auto-publishes via Instagram Graph API or prepares manual upload packages.
 
 ## Purpose
-A weekly automated social media content factory that generates Instagram-ready posts (captions, hashtags, creative briefs, optional image prompts) aligned with brand voice and weekly themes, validates them through multi-gate quality review, and either auto-publishes via Instagram Graph API or prepares a manual-ready content pack.
+WAT System PRP (Product Requirements Prompt) — a structured blueprint that gives the factory enough context to build a complete, working system in one pass.
 
 ## Core Principles
-1. **Brand Voice Consistency**: All content must match documented brand guidelines (tone, style, dos/don'ts)
-2. **Quality Gates Before Publishing**: Two-pass process (Generate > Review) with explicit approval gates
-3. **Safe Fallback**: If auto-publish fails, gracefully degrade to manual content pack
-4. **Audit Trail**: All generated content, reviews, and publish actions are logged and archived
+1. **Context is King**: Include ALL necessary documentation, references, and caveats
+2. **Validation Loops**: Provide executable checks the factory can run at each gate
+3. **Information Dense**: Use keywords and patterns from the WAT framework
+4. **Progressive Success**: Start simple, validate, then enhance
 5. **Global rules**: Follow all rules in CLAUDE.md
 
 ---
 
 ## Goal
-Build a GitHub-native social media content pipeline that eliminates weekly Instagram content creation drudgery while maintaining strict brand compliance and quality standards. The system runs autonomously on a schedule (Monday 09:00 UTC), generates a week's worth of Instagram posts, validates them against brand guardrails, and either publishes automatically or delivers a ready-to-post pack.
+Build a weekly automated Instagram content generation system that produces on-brand, compliance-checked content packs with options for automatic publishing or manual review. The system takes brand voice parameters, weekly themes, and post plans as input, generates full content packs with captions/hashtags/creative briefs, runs quality gates (brand voice alignment, compliance, format validation), and either publishes to Instagram via Graph API or outputs ready-to-post packages for manual upload.
 
-Success looks like: A brand opens their repo every Monday at 9:05 AM to find either (a) their content live on Instagram, or (b) a formatted content pack ready for manual upload -- both with full quality reports and zero prohibited claims or off-brand messaging.
+Success looks like: Marketing teams open an issue or trigger a workflow with a weekly theme, and 5-10 minutes later receive a complete content pack that's either auto-published or sitting in a ready-to-upload folder with all assets prepared.
 
 ## Why
-- **Business value**: Saves 4-6 hours/week of manual content creation and review time
-- **User impact**: Marketing teams get consistent, on-brand Instagram content without the weekly scramble
-- **Automation gap**: Existing tools either skip quality review (risky) or require full human approval (not automated)
-- **Who benefits**: Small-to-medium brands, agencies managing multiple clients, solopreneurs with consistent posting needs
-- **Frequency**: Weekly (52 content packs/year), but can be triggered on-demand for special campaigns
+- **Saves time**: Manual Instagram content creation takes 2-4 hours/week per channel. This reduces it to 10 minutes of setup + automated execution.
+- **Ensures brand consistency**: Automated brand voice checks prevent off-brand content from being published.
+- **Reduces compliance risk**: Automated scanning for prohibited claims, banned topics, and regulatory violations before publishing.
+- **Scales content production**: One person can manage 5+ Instagram accounts with weekly content schedules.
+- **Who benefits**: Marketing teams, social media managers, content creators, agencies managing multiple client accounts.
+- **Frequency**: Weekly execution (Monday 9 AM UTC), with on-demand manual triggers for campaigns.
 
 ## What
-A scheduled GitHub Actions workflow that:
-1. Reads brand profile, weekly theme, and post plan from repo config or workflow dispatch inputs
-2. Optionally scrapes reference URLs (blog posts, product pages) for accurate details using Firecrawl
-3. Generates Instagram posts (reels concepts, carousels, single images) via Claude/GPT with brand-aligned prompts
-4. Runs quality review gates: brand voice match, prohibited claims detection, banned topics scan, hashtag hygiene, IG format compliance
-5. Publishes approved posts via Instagram Graph API (auto_publish mode) OR prepares a manual upload pack (content_pack_only mode)
-6. Archives all content in `output/instagram/archive/` with rolling index
-7. Commits all artifacts back to the repo with detailed logs
+From a user's perspective:
+1. User opens a GitHub Issue or triggers a workflow with weekly theme + brand profile + post plan
+2. System fetches reference content from provided URLs (blog posts, product pages, announcements)
+3. System generates content for each post type (captions, hooks, CTAs, hashtags, alt text, creative brief)
+4. System runs automated quality review (brand voice match, compliance checks, format validation)
+5. If all quality gates pass AND auto_publish is enabled: Posts are published to Instagram with scheduling
+6. If quality gates fail OR content_pack_only mode: A complete markdown + JSON content pack is committed to the repo with manual upload instructions
+7. User receives notification (GitHub comment or Slack) with summary and links to outputs
 
 ### Success Criteria
-- [ ] All generated posts pass brand voice alignment check (threshold: 85%+)
-- [ ] Zero prohibited claims or banned topics detected
-- [ ] All hashtags meet Instagram guidelines (no banned tags, 10-30 tags per post)
-- [ ] All posts meet IG format constraints (caption ≤ 2200 chars, proper line breaks, CTA present)
-- [ ] Auto-publish succeeds OR manual content pack is generated with checklist
-- [ ] System runs autonomously via GitHub Actions on schedule (Monday 09:00 UTC)
-- [ ] Results are committed back to repo with structured logs
+- [ ] Generates complete content packs with 3-10 posts (captions, hashtags, creative briefs, alt text, posting times)
+- [ ] Runs 5-dimensional quality review (brand voice, compliance, hashtag hygiene, format validation, claims verification)
+- [ ] Auto-publishes to Instagram Graph API when quality gates pass and mode is "auto_publish"
+- [ ] Falls back to manual content packs when quality gates fail or mode is "content_pack_only"
+- [ ] Outputs structured JSON + human-readable Markdown for each content pack
+- [ ] Maintains rolling archive of content packs with latest.md index
+- [ ] System runs autonomously via GitHub Actions on schedule
+- [ ] Results are committed back to repo with clear naming (content_pack_2026-02-14.md)
 - [ ] All three execution paths work: CLI, GitHub Actions, Agent HQ
-- [ ] Rate limiting and retry logic handle API failures gracefully
 
 ---
 
 ## Inputs
+[What goes into the system. Be specific about format, source, and any validation requirements.]
 
 ```yaml
 - name: "brand_profile"
   type: "JSON"
-  source: "repo file at config/brand_profile.json OR workflow_dispatch input"
+  source: "workflow input or config file (config/brand_profile.json)"
   required: true
-  description: "Complete brand voice definition, guardrails, and content policies"
+  description: "Brand voice + guardrails defining tone, do/don't lists, target audience, products/services, banned topics, preferred CTAs, emoji style"
   example: |
     {
-      "brand_name": "EcoStyle",
-      "tone": "friendly, educational, empowering",
-      "voice_attributes": ["warm", "authentic", "fact-based"],
-      "target_audience": "eco-conscious millennials, 25-40, urban",
-      "products_services": ["sustainable fashion", "upcycled accessories", "zero-waste lifestyle"],
-      "do_list": ["use first-person plural (we/our)", "cite sources", "celebrate small wins"],
-      "dont_list": ["use corporate jargon", "guilt-trip readers", "make health claims"],
-      "banned_topics": ["politics", "religion", "weight loss"],
-      "prohibited_claims": ["cure", "detox", "guaranteed results"],
-      "preferred_cta": ["Shop now", "Learn more", "Join the movement"],
-      "emoji_style": "moderate (3-5 per post, relevant only)",
-      "hashtag_strategy": "10-15 tags, mix of broad and niche, no banned tags"
+      "brand_name": "EcoFlow Energy",
+      "tone": "friendly, informative, eco-conscious",
+      "target_audience": "environmentally conscious consumers, ages 25-45",
+      "products": ["solar panels", "home batteries", "EV chargers"],
+      "banned_topics": ["politics", "religion", "controversial social issues"],
+      "prohibited_claims": ["guaranteed savings", "100% renewable", "cure", "proven"],
+      "preferred_cta": ["Learn more", "Shop now", "Get started", "Join the movement"],
+      "emoji_style": "minimal (1-2 per post)",
+      "hashtag_preferences": {
+        "count": "8-12 per post",
+        "avoid": ["generic", "spammy", "banned"]
+      }
     }
 
 - name: "weekly_theme"
   type: "string"
-  source: "workflow_dispatch input OR repo file at config/weekly_theme.txt"
+  source: "workflow input"
   required: true
-  description: "The content focus/topic for this week's posts"
-  example: "Spring Collection Launch Week"
+  description: "The focus/topic for this week's posts (e.g., 'spring launch', 'behind the scenes', 'customer stories', 'product tips')"
+  example: "Spring 2026 Product Launch - New Solar Roof Tiles"
 
 - name: "post_plan"
   type: "JSON"
-  source: "workflow_dispatch input OR repo file at config/post_plan.json"
+  source: "workflow input"
   required: true
-  description: "Number and types of Instagram posts to generate, with any required templates or series"
+  description: "Number and types of posts to create (reels, carousels, single images), with any required series/templates"
   example: |
     {
-      "posts": [
-        {"type": "reel_concept", "count": 3, "topics": ["product spotlight", "behind the scenes", "customer story"]},
-        {"type": "carousel", "count": 2, "slides_per": 5, "topics": ["style guide", "impact stats"]},
-        {"type": "single_image", "count": 1, "topics": ["quote graphic"]}
+      "reels": 3,
+      "carousels": 2,
+      "single_images": 2,
+      "stories": 0,
+      "series": [
+        {"name": "Tip Tuesday", "count": 1, "format": "single_image"},
+        {"name": "Behind the Scenes", "count": 1, "format": "reel"}
       ],
-      "series_tags": ["#EcoStyleSpring", "#SustainableFashion"],
-      "posting_schedule": "Mon/Wed/Fri at 10am EST"
+      "posting_schedule": "spread evenly across 7 days, starting Monday 10 AM local time"
     }
 
 - name: "reference_links"
   type: "JSON array"
-  source: "workflow_dispatch input OR repo file at config/reference_links.json (optional)"
+  source: "workflow input (optional)"
   required: false
-  description: "URLs to scrape for accurate product details, blog content, or announcements"
+  description: "URLs to recent blog posts, announcements, or product pages to pull accurate details from"
   example: |
     [
-      {"url": "https://ecostyle.com/blog/spring-collection", "context": "new product details"},
-      {"url": "https://ecostyle.com/impact-report-2024", "context": "sustainability metrics"}
+      {"url": "https://ecoflow.com/blog/solar-roof-launch", "purpose": "product details"},
+      {"url": "https://ecoflow.com/products/solar-roof-tiles", "purpose": "specs and pricing"}
     ]
 
 - name: "publishing_mode"
-  type: "choice: 'auto_publish' | 'content_pack_only'"
-  source: "workflow_dispatch input OR env var PUBLISHING_MODE (default: content_pack_only)"
+  type: "choice: auto_publish | content_pack_only"
+  source: "workflow input"
   required: true
-  description: "Whether to auto-publish to Instagram or prepare manual upload pack"
-  example: "auto_publish"
+  description: "Whether to auto-publish to Instagram (if quality gates pass) or always output content packs for manual upload"
+  example: "content_pack_only"
 ```
 
 ## Outputs
+[What comes out of the system. Where do results go?]
 
 ```yaml
-- name: "content_pack_{date}.md"
+- name: "content_pack_markdown"
   type: "Markdown"
-  destination: "repo commit at output/instagram/content_pack_2026-02-17.md"
-  description: "Human-readable weekly content pack with all post details formatted for review or manual upload"
-  example: "See factory/templates/instagram_content_pack.md"
+  destination: "output/instagram/content_pack_{YYYY-MM-DD}.md"
+  description: "Human-readable content pack with post-by-post details (hook, caption, CTA, hashtags, alt text, posting time, creative brief)"
+  example: "output/instagram/content_pack_2026-02-14.md"
 
-- name: "content_pack_{date}.json"
+- name: "content_pack_json"
   type: "JSON"
-  destination: "repo commit at output/instagram/content_pack_2026-02-17.json"
-  description: "Machine-readable structured data for each post (for automation or API consumption)"
+  destination: "output/instagram/content_pack_{YYYY-MM-DD}.json"
+  description: "Structured data for each post (machine-readable, suitable for automation)"
   example: |
     {
-      "generated_at": "2026-02-17T09:02:15Z",
-      "theme": "Spring Collection Launch Week",
+      "metadata": {
+        "generated_at": "2026-02-14T09:15:00Z",
+        "theme": "Spring 2026 Product Launch",
+        "brand": "EcoFlow Energy",
+        "total_posts": 7
+      },
       "posts": [
         {
-          "post_id": "post_001",
-          "type": "reel_concept",
-          "hook": "POV: You just discovered your new favorite sustainable brand 🌱",
-          "caption": "Meet EcoStyle Spring 2026...",
-          "cta": "Shop now (link in bio)",
-          "hashtags": ["#EcoStyleSpring", "#SustainableFashion", ...],
-          "alt_text": "Model wearing upcycled denim jacket...",
-          "posting_time": "2026-02-17 10:00:00 EST",
-          "creative_brief": "15-second reel showing 3 spring pieces...",
-          "image_prompt": "A bright, airy flat lay of spring collection items..."
+          "post_id": 1,
+          "type": "reel",
+          "posting_time": "2026-02-17T10:00:00-08:00",
+          "hook": "☀️ Introducing the future of home energy",
+          "caption": "Our new Solar Roof Tiles seamlessly integrate...",
+          "cta": "Learn more (link in bio)",
+          "hashtags": ["#SolarRoof", "#CleanEnergy", "#EcoFlowEnergy"],
+          "alt_text": "Animated reel showing solar roof tiles installation",
+          "creative_brief": "15-30s reel: time-lapse of installation, cut to house powering at night",
+          "image_prompt": "realistic photo: modern house with sleek black solar roof tiles, golden hour lighting"
         }
       ]
     }
 
-- name: "review_report_{date}.md"
+- name: "review_report"
   type: "Markdown"
-  destination: "repo commit at output/instagram/review_report_2026-02-17.md"
-  description: "Quality review results with pass/fail status for each gate"
+  destination: "output/instagram/review_report_{YYYY-MM-DD}.md"
+  description: "Quality review results (brand voice match score, compliance checks, hashtag hygiene, format validation)"
   example: |
-    ## Quality Review Report - 2026-02-17
+    # Quality Review Report - 2026-02-14
     
-    **Overall Status**: PASS (6/6 posts approved)
+    ## Overall Score: 87/100 ✅ PASS
     
-    ### Brand Voice Alignment
-    - post_001: 92% match ✓
-    - post_002: 88% match ✓
-    ...
+    ### Brand Voice Alignment: 90/100
+    - Tone match: Excellent (friendly, informative)
+    - Audience fit: Strong (eco-conscious messaging)
+    - Minor issue: Post 3 uses slightly formal language
     
-    ### Compliance Checks
-    - Prohibited claims: 0 detected ✓
-    - Banned topics: 0 detected ✓
-    - Hashtag hygiene: All tags approved ✓
+    ### Compliance Checks: 100/100
+    - No banned topics detected
+    - No prohibited claims found
+    - All CTAs approved
+    
+    ### Hashtag Hygiene: 85/100
+    - Count: 8-12 per post ✓
+    - No banned hashtags ✓
+    - 2 generic hashtags flagged (#love, #instagood) - consider alternatives
+    
+    ### Format Validation: 80/100
+    - Caption lengths OK (all under 2200 chars)
+    - Alt text present for all posts ✓
+    - 1 creative brief lacks technical detail
+    
+    ### Claims Verification: 100/100
+    - All factual claims sourced from reference links ✓
+    - No unsupported statistics
 
-- name: "publish_log_{date}.json"
+- name: "publish_log"
   type: "JSON"
-  destination: "repo commit at output/instagram/publish_log_2026-02-17.json (if auto_publish mode)"
-  description: "Instagram Graph API responses with media IDs or failure reasons"
+  destination: "output/instagram/publish_log_{YYYY-MM-DD}.json (only if auto_publish mode)"
+  description: "Instagram Graph API response for each published post (media IDs, URLs, or failure reasons)"
   example: |
     {
-      "published_at": "2026-02-17T09:04:33Z",
+      "published_at": "2026-02-14T09:20:00Z",
       "mode": "auto_publish",
       "results": [
-        {"post_id": "post_001", "status": "success", "ig_media_id": "18123456789012345", "permalink": "https://instagram.com/p/..."},
-        {"post_id": "post_002", "status": "failed", "error": "Rate limit exceeded", "retry_scheduled": true}
+        {
+          "post_id": 1,
+          "status": "success",
+          "ig_media_id": "17895695668004550",
+          "ig_permalink": "https://instagram.com/p/ABC123/",
+          "scheduled_for": "2026-02-17T10:00:00-08:00"
+        },
+        {
+          "post_id": 2,
+          "status": "failed",
+          "error": "Rate limit exceeded - retry in 3600s",
+          "fallback": "content included in manual upload pack"
+        }
       ]
     }
 
-- name: "upload_checklist_{date}.md"
+- name: "upload_checklist"
   type: "Markdown"
-  destination: "repo commit at output/instagram/upload_checklist_2026-02-17.md (if content_pack_only mode)"
-  description: "Step-by-step manual upload instructions with copy-paste ready text"
-  example: |
-    ## Instagram Upload Checklist - Week of Feb 17, 2026
-    
-    ### Post 1 (Monday 10am EST)
-    - [ ] Upload media: [image/video description]
-    - [ ] Caption (copy below):
-    ```
-    [full caption with line breaks]
-    ```
-    - [ ] Hashtags (copy below):
-    ```
-    [hashtag list]
-    ```
-    - [ ] Schedule for: Monday, Feb 17 at 10:00 AM EST
+  destination: "output/instagram/upload_checklist_{YYYY-MM-DD}.md (only if content_pack_only mode)"
+  description: "Manual upload instructions with copy-paste ready captions, hashtag lists, and posting times"
+  example: "output/instagram/upload_checklist_2026-02-14.md"
 
-- name: "archive/latest.md"
-  type: "Markdown (rolling index)"
-  destination: "repo commit at output/instagram/archive/latest.md"
-  description: "Links to the 10 most recent content packs for quick access"
+- name: "latest_index"
+  type: "Markdown"
+  destination: "output/instagram/latest.md (updated each run)"
+  description: "Rolling index pointing to the most recent content pack with quick links"
   example: |
-    ## Recent Instagram Content Packs
+    # Latest Instagram Content Pack
     
-    1. [2026-02-17 - Spring Collection Launch](../content_pack_2026-02-17.md)
-    2. [2026-02-10 - Customer Love Week](../content_pack_2026-02-10.md)
-    ...
+    **Generated:** 2026-02-14 09:15 UTC
+    **Theme:** Spring 2026 Product Launch
+    
+    - [Content Pack (Markdown)](./content_pack_2026-02-14.md)
+    - [Content Pack (JSON)](./content_pack_2026-02-14.json)
+    - [Review Report](./review_report_2026-02-14.md)
+    - [Upload Checklist](./upload_checklist_2026-02-14.md)
 ```
 
 ---
@@ -217,88 +242,119 @@ A scheduled GitHub Actions workflow that:
 ## All Needed Context
 
 ### Documentation & References
-
 ```yaml
 # MUST READ — Include these in context when building
+- url: "https://developers.facebook.com/docs/instagram-api/overview"
+  why: "Instagram Graph API overview - authentication, endpoints, rate limits"
+
 - url: "https://developers.facebook.com/docs/instagram-api/reference/ig-user/media"
-  why: "Instagram Graph API media creation endpoint — POST format, field requirements, error codes"
+  why: "Creating Instagram posts via API - required fields, media types, error codes"
 
-- url: "https://developers.facebook.com/docs/instagram-api/reference/ig-media"
-  why: "IG media object structure — caption limits (2200 chars), hashtag rules, carousel vs single image"
+- url: "https://developers.facebook.com/docs/instagram-api/reference/ig-user/media_publish"
+  why: "Publishing flow - container creation, media publish, scheduling"
 
-- url: "https://help.instagram.com/477434105621119"
-  why: "Instagram Community Guidelines — banned hashtags, prohibited content (official source)"
+- url: "https://developers.facebook.com/docs/instagram-api/guides/content-publishing"
+  why: "Content publishing guide - image requirements, video specs, carousel format"
 
-- url: "https://docs.anthropic.com/claude/docs/structured-outputs"
-  why: "Claude structured output pattern for JSON schema validation — use for post generation"
-
-- url: "https://docs.firecrawl.dev/api-reference/endpoint/scrape"
-  why: "Firecrawl scraping API — for reference link content extraction"
+- url: "https://developers.facebook.com/docs/graph-api/overview/rate-limiting"
+  why: "Rate limits - 200 API calls per hour per user, batch request limits"
 
 - doc: "config/mcp_registry.md"
-  why: "Check which MCPs provide the capabilities this system needs (Firecrawl, Anthropic, Fetch)"
+  why: "Check which MCPs provide Firecrawl (reference content), Anthropic (generation), HTTP (Instagram API)"
 
 - doc: "library/patterns.md"
-  why: "Select Generate > Review > Publish pattern (Pattern #5) as the base workflow"
+  why: "Primary pattern: Generate > Review > Publish. Secondary: Fan-Out > Process > Merge for parallel post generation"
 
 - doc: "library/tool_catalog.md"
-  why: "Identify reusable tool patterns (llm_prompt, structured_extract, rest_client, firecrawl_scrape)"
+  why: "Reusable patterns: llm_prompt, structured_extract, multi_dimension_scorer, rest_client, json_read_write"
+
+- url: "https://help.instagram.com/478745558852297"
+  why: "Instagram Community Guidelines - what content is prohibited"
+
+- url: "https://business.instagram.com/blog/instagram-algorithm-ranking-system"
+  why: "Best practices for captions, hashtags, engagement optimization"
 ```
 
 ### Workflow Pattern Selection
-
 ```yaml
-pattern: "Generate > Review > Publish (Pattern #5)"
-rationale: "Perfect fit — automated content generation with quality gates before publishing"
-modifications:
-  - "Add content_pack_only fallback mode (publish step becomes output-only)"
-  - "Add reference link scraping step before generation (Scrape > Process > Output sub-pattern)"
-  - "Add rolling archive step after publish/pack (Collect > Transform > Store sub-pattern)"
+# Reference library/patterns.md — select the best-fit pattern
+pattern: "Generate > Review > Publish"
+rationale: |
+  This system follows the classic two-pass content creation flow:
+  1. Generate: Claude produces draft content for all posts
+  2. Review: Automated quality gates check brand voice, compliance, format
+  3. Publish: Either auto-publish to IG API or output manual content packs
+  
+  The review step is critical - it prevents off-brand or non-compliant content from reaching production.
+
+modifications: |
+  - Add Fan-Out > Process > Merge (Agent Teams) for parallel post generation (3+ posts = independent tasks)
+  - Add Sequential State Management for tracking published posts and preventing duplicates
+  - Gate decision: Quality review score determines auto-publish vs manual fallback
+
+secondary_pattern: "Fan-Out > Process > Merge (Agent Teams)"
+rationale: |
+  If post_plan specifies 3+ posts (e.g., "3 reels + 2 carousels + 2 singles" = 7 independent tasks),
+  use Agent Teams to generate all posts in parallel. Each teammate generates one post type,
+  team lead merges results and coordinates review.
+  
+  Sequential generation of 7 posts = ~70-90 seconds
+  Parallel generation with Agent Teams = ~12-18 seconds (5x faster, same token cost)
 ```
 
 ### MCP & Tool Requirements
-
 ```yaml
+# Reference config/mcp_registry.md — list capabilities needed
 capabilities:
-  - name: "web scraping (reference links)"
+  - name: "Reference content extraction"
     primary_mcp: "firecrawl"
-    alternative_mcp: "puppeteer (for JS-heavy pages)"
-    fallback: "Direct HTTP with requests + BeautifulSoup4 (limited — no JS rendering)"
+    alternative_mcp: "fetch"
+    fallback: "Direct HTTP with requests + BeautifulSoup"
     secret_name: "FIRECRAWL_API_KEY"
 
-  - name: "LLM content generation"
+  - name: "AI content generation"
     primary_mcp: "anthropic"
-    alternative_mcp: "openai (GPT-4)"
-    fallback: "None — LLM is required for generation"
-    secret_name: "ANTHROPIC_API_KEY or OPENAI_API_KEY"
+    alternative_mcp: "openai"
+    fallback: "N/A - generation requires LLM"
+    secret_name: "ANTHROPIC_API_KEY"
 
-  - name: "Instagram publishing"
-    primary_mcp: "fetch (HTTP client)"
-    alternative_mcp: "none (direct REST API)"
-    fallback: "Manual content pack mode — no API required"
+  - name: "Instagram Graph API"
+    primary_mcp: "none"
+    alternative_mcp: "none"
+    fallback: "Direct HTTP API via rest_client tool pattern"
     secret_name: "INSTAGRAM_ACCESS_TOKEN"
 
-  - name: "file storage and archive"
-    primary_mcp: "filesystem"
-    alternative_mcp: "none (direct Python pathlib)"
-    fallback: "None — filesystem access is built-in"
-    secret_name: "none"
+  - name: "Structured data extraction"
+    primary_mcp: "anthropic"
+    alternative_mcp: "openai"
+    fallback: "Regex + manual parsing"
+    secret_name: "ANTHROPIC_API_KEY"
+
+  - name: "Notifications"
+    primary_mcp: "slack (optional)"
+    alternative_mcp: "email (smtp)"
+    fallback: "GitHub Issue comment"
+    secret_name: "SLACK_WEBHOOK_URL or SMTP_PASSWORD"
 ```
 
 ### Known Gotchas & Constraints
-
 ```
-# CRITICAL: Instagram Graph API requires a Facebook Business account and approved Instagram Business account
-# CRITICAL: Access tokens expire — must implement token refresh or manual rotation instructions
-# CRITICAL: Instagram rate limits: 200 API calls per hour per user — implement retry with exponential backoff
-# CRITICAL: Caption limit is 2200 characters including hashtags — must validate before API call
-# CRITICAL: Hashtags must be at end of caption or on separate lines — validate format
-# CRITICAL: Instagram API does NOT support scheduling future posts — must use manual scheduling or third-party tools
-# CRITICAL: Firecrawl has usage limits on free tier — implement HTTP fallback for reference scraping
-# CRITICAL: Claude Sonnet 4 has ~8k output token limit — generating 6+ posts in one call may hit limits; use batching
-# CRITICAL: Brand voice scoring requires reference examples in brand_profile — must include sample posts
+# CRITICAL: Instagram Graph API rate limit is 200 calls/hour per user
+# CRITICAL: Media must be publicly accessible HTTPS URLs for Graph API upload
+# CRITICAL: Carousel posts require 2-10 media items, all must be same type (all images or all videos)
+# CRITICAL: Reels must be MP4, H.264 codec, 1080x1920 (9:16), max 90 seconds, max 100MB
+# CRITICAL: Captions max 2200 characters, but optimal is 125-150 for full visibility before "more" button
+# CRITICAL: Hashtags count toward caption character limit, optimal count is 8-12 (not 30)
+# CRITICAL: Alt text (accessibility caption) is separate field, max 100 characters
+# CRITICAL: Scheduled posts require Business or Creator account, max 75 scheduled posts at once
+# CRITICAL: Access tokens expire - use long-lived tokens (60 days), implement refresh flow
+# CRITICAL: Cannot publish to other users' accounts - must authenticate as account owner
+# CRITICAL: Brand voice scoring requires examples of on-brand vs off-brand content in the prompt
+# CRITICAL: Compliance checks must include FTC guidelines for sponsored/affiliate content if applicable
 # CRITICAL: Secrets are NEVER hardcoded — always use GitHub Secrets or .env
 # CRITICAL: Every tool must have try/except, logging, type hints, and a main() function
+# CRITICAL: Image prompts for generative AI are guidance only - this system does NOT generate images
+# CRITICAL: Creative briefs are instructions for manual content creation or briefing designers
 ```
 
 ---
@@ -306,178 +362,235 @@ capabilities:
 ## System Design
 
 ### Subagent Architecture
+[Define the specialist subagents this system needs. One subagent per major capability or workflow phase.]
 
 ```yaml
 subagents:
   - name: "content-strategist"
-    description: "Delegate to this subagent when planning post types, themes, and content strategy based on brand profile and weekly theme"
+    description: |
+      Delegate when you need to plan the content strategy for the week:
+      - Analyze brand profile and weekly theme
+      - Determine post mix and sequencing
+      - Create content pillars and messaging framework
+      - Suggest optimal posting times
+      - Coordinate with reference content extraction
     tools: "Read, Bash"
     model: "sonnet"
     permissionMode: "default"
     responsibilities:
-      - "Analyze brand profile and weekly theme to determine content angles"
-      - "Map post_plan types to specific content topics and hooks"
-      - "Identify which reference links are most relevant for each post type"
-      - "Create a structured content brief for each post"
-    inputs: "brand_profile.json, weekly_theme string, post_plan.json, reference_links.json"
-    outputs: "List of content briefs (JSON) with post type, topic, hook angle, reference URLs, and target audience segment"
-
-  - name: "reference-scraper-specialist"
-    description: "Delegate to this subagent when extracting content from reference URLs for factual accuracy in posts"
-    tools: "Read, Bash"
-    model: "sonnet"
-    permissionMode: "default"
-    responsibilities:
-      - "Scrape each reference URL via Firecrawl (primary) or HTTP+BeautifulSoup (fallback)"
-      - "Extract key facts, product details, metrics, quotes for content generation"
-      - "Handle scraping failures gracefully (log error, continue with available data)"
-      - "Return structured extracted data per URL"
-    inputs: "reference_links array with URLs and context"
-    outputs: "Extracted reference data (JSON) with url, context, extracted_text, key_facts, status"
+      - "Parse brand_profile.json and weekly_theme input"
+      - "Fetch and extract content from reference_links URLs (via Firecrawl)"
+      - "Synthesize brand voice, theme, and reference material into content strategy"
+      - "Generate posting schedule with optimal times"
+      - "Create content brief for each post type (reels, carousels, singles)"
+    inputs: "brand_profile (JSON), weekly_theme (string), post_plan (JSON), reference_links (array)"
+    outputs: "content_strategy.json with post briefs, themes, posting schedule"
 
   - name: "copywriter-specialist"
-    description: "Delegate to this subagent when generating Instagram captions, hooks, CTAs, and creative briefs"
-    tools: "Read, Bash"
+    description: |
+      Delegate when you need to generate Instagram copy (captions, hooks, CTAs):
+      - Write engaging hooks (first 125 chars)
+      - Craft full captions matching brand voice
+      - Generate CTAs aligned with brand preferences
+      - Write alt text for accessibility
+      - Ensure tone, style, and emoji usage match brand guidelines
+    tools: "Read, Write"
     model: "sonnet"
     permissionMode: "default"
     responsibilities:
-      - "Generate Instagram-optimized captions (hook, body, CTA) matching brand voice"
-      - "Write creative briefs for visual content (image/video descriptions)"
-      - "Generate optional image prompts for AI image generation tools"
-      - "Apply brand voice guidelines (tone, do/dont lists, emoji style)"
-      - "Ensure caption length ≤ 2200 characters"
-    inputs: "Content brief from strategist, brand_profile, extracted reference data"
-    outputs: "Post content (JSON) with hook, caption, cta, creative_brief, image_prompt, alt_text"
+      - "Read content brief from strategist"
+      - "Generate hook (attention-grabbing first line)"
+      - "Write full caption (125-300 words, brand voice matched)"
+      - "Select appropriate CTA from brand preferences"
+      - "Write descriptive alt text (max 100 chars)"
+      - "Apply emoji style per brand guidelines"
+    inputs: "content brief (JSON), brand_profile (JSON)"
+    outputs: "post_copy.json with hook, caption, cta, alt_text for each post"
 
   - name: "hashtag-specialist"
-    description: "Delegate to this subagent when generating or validating Instagram hashtags"
-    tools: "Read, Bash"
-    model: "haiku"
-    permissionMode: "default"
-    responsibilities:
-      - "Generate 10-15 relevant hashtags per post based on content and brand strategy"
-      - "Mix broad hashtags (100k+ posts) and niche hashtags (5k-50k posts)"
-      - "Avoid banned/flagged hashtags (maintain internal banned list)"
-      - "Apply series_tags from post_plan if specified"
-      - "Validate hashtag count (10-30 per post, Instagram guidelines)"
-    inputs: "Post content (caption, topic), brand_profile hashtag_strategy, post_plan series_tags"
-    outputs: "Hashtag list (array of strings) with mix of broad/niche tags, validated for compliance"
-
-  - name: "reviewer-specialist"
-    description: "Delegate to this subagent when running quality gates on generated content before publishing"
+    description: |
+      Delegate when you need to generate hashtag sets:
+      - Research trending hashtags relevant to theme
+      - Generate mix of broad/niche hashtags (8-12 per post)
+      - Avoid banned, generic, or spammy hashtags
+      - Ensure hashtags match brand preferences
+      - Validate hashtag hygiene
     tools: "Read, Bash"
     model: "sonnet"
     permissionMode: "default"
     responsibilities:
-      - "Score brand voice alignment (0-100%) against brand_profile examples"
-      - "Scan for prohibited claims from brand_profile.prohibited_claims"
-      - "Scan for banned topics from brand_profile.banned_topics"
-      - "Validate Instagram format compliance (caption length, hashtag placement, line breaks)"
-      - "Check hashtag hygiene (no banned tags, proper count)"
-      - "Return PASS/FAIL status per post with detailed feedback"
-    inputs: "All generated posts (JSON), brand_profile with guardrails"
-    outputs: "Review report (JSON + Markdown) with per-post scores, compliance checks, overall status, failed posts flagged for regeneration"
+      - "Research hashtags relevant to weekly theme and brand"
+      - "Generate 8-12 hashtags per post (mix of sizes)"
+      - "Filter out banned, generic, spammy hashtags"
+      - "Check against brand hashtag preferences"
+      - "Validate total character count (hashtags count toward 2200 limit)"
+    inputs: "weekly_theme (string), brand_profile (JSON), post_type (string)"
+    outputs: "hashtags.json with 8-12 hashtags per post, size breakdown"
 
-  - name: "publisher-specialist"
-    description: "Delegate to this subagent when publishing approved content to Instagram via Graph API"
-    tools: "Read, Bash"
-    model: "haiku"
+  - name: "creative-director"
+    description: |
+      Delegate when you need to create creative briefs and image prompts:
+      - Write creative briefs for video/image production
+      - Generate AI image prompts (for guidance, not generation)
+      - Specify technical requirements (aspect ratio, format, duration)
+      - Suggest visual themes and styling
+      - Align creative direction with brand guidelines
+    tools: "Read, Write"
+    model: "sonnet"
     permissionMode: "default"
     responsibilities:
-      - "Call Instagram Graph API to create media posts (single image or carousel)"
-      - "Handle rate limiting (200 calls/hour) with retry and exponential backoff"
-      - "Handle API errors gracefully (log error, mark post as failed, continue with remaining posts)"
-      - "Track publish results (media ID, permalink, or error message)"
-      - "If all posts fail, fall back to content_pack_only mode"
-    inputs: "Approved posts (JSON with captions, hashtags, media URLs if available), INSTAGRAM_ACCESS_TOKEN"
-    outputs: "Publish log (JSON) with per-post results (success/failed, media_id, permalink, error details)"
+      - "Read content brief and copy"
+      - "Write creative brief for each post (what to show, how to shoot/design)"
+      - "Generate image prompt for AI guidance (style, composition, mood)"
+      - "Specify technical requirements (1080x1080 for feed, 1080x1920 for reels, etc.)"
+      - "Ensure visual direction matches brand aesthetic"
+    inputs: "content brief (JSON), post_copy (JSON), brand_profile (JSON)"
+    outputs: "creative_briefs.json with brief, image_prompt, technical_specs per post"
+
+  - name: "reviewer-specialist"
+    description: |
+      Delegate when you need to run quality review and compliance checks:
+      - Score brand voice alignment (0-100)
+      - Check for banned topics and prohibited claims
+      - Validate hashtag hygiene
+      - Verify Instagram format compliance
+      - Cross-check claims against reference content
+      - Generate review report with pass/fail decision
+    tools: "Read, Write"
+    model: "sonnet"
+    permissionMode: "default"
+    responsibilities:
+      - "Load all generated content (copy, hashtags, creative briefs)"
+      - "Score brand voice alignment across 5 dimensions"
+      - "Scan for banned topics from brand_profile"
+      - "Check for prohibited claims (guarantees, medical claims, etc.)"
+      - "Validate hashtag count, banned hashtags, generic hashtags"
+      - "Verify caption length, alt text presence, technical specs"
+      - "Cross-reference factual claims with reference content"
+      - "Calculate overall quality score"
+      - "Generate detailed review report"
+      - "Return pass/fail decision for auto-publish gate"
+    inputs: "generated_content (JSON), brand_profile (JSON), reference_content (text)"
+    outputs: "review_report.json with scores, issues, pass/fail decision"
+
+  - name: "instagram-publisher"
+    description: |
+      Delegate when you need to publish to Instagram Graph API or prepare manual upload:
+      - Format content for Instagram Graph API
+      - Handle media container creation
+      - Execute publish API calls with retry logic
+      - Handle rate limiting (200 calls/hour)
+      - Fall back to manual content pack on API failure
+      - Generate publish log or upload checklist
+    tools: "Read, Write, Bash"
+    model: "sonnet"
+    permissionMode: "default"
+    responsibilities:
+      - "Check publishing_mode (auto_publish vs content_pack_only)"
+      - "If auto_publish: Format posts for Instagram Graph API"
+      - "Create media containers for each post (images/videos must be public URLs)"
+      - "Execute publish API calls with exponential backoff retry"
+      - "Handle rate limits (pause and resume)"
+      - "Log publish results (media IDs, permalinks, errors)"
+      - "If content_pack_only OR publish fails: Generate manual upload checklist"
+      - "Format upload checklist with copy-paste ready captions, hashtags, times"
+    inputs: "generated_content (JSON), review_report (JSON), publishing_mode (string)"
+    outputs: "publish_log.json OR upload_checklist.md"
 ```
 
 ### Agent Teams Analysis
-
 ```yaml
 # Apply the 3+ Independent Tasks Rule
 independent_tasks:
-  - "Generate post 1 (reel concept) — no dependency on other posts"
-  - "Generate post 2 (reel concept) — no dependency on other posts"
-  - "Generate post 3 (reel concept) — no dependency on other posts"
-  - "Generate post 4 (carousel) — no dependency on other posts"
-  - "Generate post 5 (carousel) — no dependency on other posts"
-  - "Generate post 6 (single image) — no dependency on other posts"
+  - "Generate reel post 1 (hook, caption, CTA, hashtags, creative brief, image prompt)"
+  - "Generate reel post 2 (independent of post 1)"
+  - "Generate reel post 3 (independent of posts 1-2)"
+  - "Generate carousel post 1 (independent of reels)"
+  - "Generate carousel post 2 (independent of other posts)"
+  - "Generate single image post 1 (independent of other posts)"
+  - "Generate single image post 2 (independent of other posts)"
 
-independent_task_count: "6 (assuming post_plan with 3 reels + 2 carousels + 1 single image)"
+independent_task_count: "7 (for a typical post_plan with 3 reels + 2 carousels + 2 singles)"
 recommendation: "Use Agent Teams for post generation phase"
-rationale: "6 independent content generation tasks, each taking ~15-20s with Claude API = 90-120s sequential vs ~18-22s parallel (5-6x speedup). All posts use the same brand profile and weekly theme but generate unique content. No data dependencies between posts. Merge step is simple (concatenate post arrays). Clear parallelization win."
+rationale: |
+  Each post is an independent unit of work - it doesn't depend on other posts being generated first.
+  Sequential generation: ~10-15 seconds per post × 7 posts = 70-105 seconds
+  Parallel with Agent Teams: ~12-18 seconds (all 7 posts generated simultaneously)
+  
+  Result: 5x wall-time speedup, same token cost, identical quality.
+  
+  Exception: If post_plan specifies fewer than 3 posts, use sequential (overhead not justified).
 
-# Agent Teams recommended:
+# Agent Teams structure for post generation
 team_lead_responsibilities:
-  - "Create shared task list with one task per post from post_plan"
-  - "Spawn 4-6 copywriter teammates (one per post) with scoped briefs"
-  - "Collect all generated posts"
-  - "Merge into single content_pack JSON array"
-  - "Pass merged content to reviewer-specialist for quality gates"
+  - "Read content_strategy.json from content-strategist"
+  - "Create post generation task list (one per post in post_plan)"
+  - "Spawn 1 teammate per post (or batch into groups of 3-4 if >10 posts)"
+  - "Each teammate generates: hook, caption, CTA, hashtags, alt_text, creative_brief, image_prompt"
+  - "Merge all teammate results into unified generated_content.json"
+  - "Run consistency check (ensure no duplicate hooks/captions across posts)"
+  - "Pass to reviewer-specialist for quality gates"
 
 teammates:
-  - name: "copywriter-teammate-reel-1"
-    task: "Generate Instagram reel concept #1 (product spotlight) with hook, caption, CTA, hashtags, creative brief, image prompt. Match brand voice from brand_profile. Use weekly_theme context. Output JSON."
-    inputs: "brand_profile, weekly_theme, content_brief for reel 1, extracted reference data"
-    outputs: "Post JSON with all fields (hook, caption, cta, hashtags, creative_brief, image_prompt, alt_text)"
+  - name: "post-generator-reel-1"
+    task: "Generate complete content for Reel Post 1 per content brief"
+    inputs: "content_strategy.json (brief for reel 1), brand_profile.json"
+    outputs: "reel_1_content.json {hook, caption, cta, hashtags, alt_text, creative_brief, image_prompt}"
 
-  - name: "copywriter-teammate-reel-2"
-    task: "Generate Instagram reel concept #2 (behind the scenes) with hook, caption, CTA, hashtags, creative brief, image prompt. Match brand voice. Output JSON."
-    inputs: "brand_profile, weekly_theme, content_brief for reel 2, extracted reference data"
-    outputs: "Post JSON"
+  - name: "post-generator-carousel-1"
+    task: "Generate complete content for Carousel Post 1 per content brief"
+    inputs: "content_strategy.json (brief for carousel 1), brand_profile.json"
+    outputs: "carousel_1_content.json {hook, caption, cta, hashtags, alt_text, creative_brief, image_prompt}"
 
-  - name: "copywriter-teammate-reel-3"
-    task: "Generate Instagram reel concept #3 (customer story) with hook, caption, CTA, hashtags, creative brief, image prompt. Match brand voice. Output JSON."
-    inputs: "brand_profile, weekly_theme, content_brief for reel 3, extracted reference data"
-    outputs: "Post JSON"
+  # ... one teammate per post in post_plan
 
-  - name: "copywriter-teammate-carousel-1"
-    task: "Generate Instagram carousel post #1 (style guide, 5 slides) with hook, caption for each slide, overall CTA, hashtags, creative brief for each slide. Match brand voice. Output JSON."
-    inputs: "brand_profile, weekly_theme, content_brief for carousel 1"
-    outputs: "Carousel post JSON with slides array"
-
-  - name: "copywriter-teammate-carousel-2"
-    task: "Generate Instagram carousel post #2 (impact stats, 5 slides) with hook, caption per slide, CTA, hashtags, creative briefs. Match brand voice. Output JSON."
-    inputs: "brand_profile, weekly_theme, content_brief for carousel 2, extracted reference data (metrics)"
-    outputs: "Carousel post JSON"
-
-  - name: "copywriter-teammate-single-1"
-    task: "Generate Instagram single image post (quote graphic) with hook, caption, CTA, hashtags, creative brief, alt text. Match brand voice. Output JSON."
-    inputs: "brand_profile, weekly_theme, content_brief for single image"
-    outputs: "Post JSON"
-
-# Sequential fallback:
-sequential_rationale: "If Agent Teams is disabled or fails, generate posts sequentially using copywriter-specialist. Same output, 6x slower (acceptable for weekly schedule). All posts still generated, reviewed, and published/packaged."
+sequential_fallback: |
+  If Agent Teams is not available OR post count < 3:
+  - Main agent generates posts sequentially
+  - Delegates to copywriter-specialist, hashtag-specialist, creative-director in sequence
+  - Produces identical output structure
+  - Takes longer wall time but requires no parallelization infrastructure
 ```
 
 ### GitHub Actions Triggers
-
 ```yaml
 triggers:
   - type: "schedule"
     config: "cron: '0 9 * * 1'  # Every Monday at 09:00 UTC"
-    description: "Weekly automated content generation every Monday morning"
+    description: "Weekly automated content generation for standard posting schedule"
 
   - type: "workflow_dispatch"
     config: |
       inputs:
+        brand_profile_path:
+          description: 'Path to brand profile JSON file'
+          required: true
+          default: 'config/brand_profile.json'
         weekly_theme:
-          description: 'This week content theme'
+          description: 'Weekly theme or campaign focus'
           required: true
-        publishing_mode:
-          description: 'auto_publish or content_pack_only'
+        post_plan:
+          description: 'JSON post plan (reels, carousels, singles counts)'
           required: true
-          default: 'content_pack_only'
-        post_plan_json:
-          description: 'JSON post plan (optional, uses default if empty)'
+        reference_links:
+          description: 'JSON array of reference URLs (optional)'
           required: false
-    description: "Manual trigger for on-demand content generation (campaigns, special events)"
+          default: '[]'
+        publishing_mode:
+          description: 'Publishing mode'
+          required: true
+          type: choice
+          options:
+            - content_pack_only
+            - auto_publish
+          default: 'content_pack_only'
+    description: "Manual trigger for ad-hoc campaigns or testing"
 
-  - type: "issues (Agent HQ)"
-    config: "assigned to @claude with label 'instagram-content'"
-    description: "Issue-driven content generation — paste theme and post plan in issue body"
+  - type: "issues"
+    config: |
+      types: [opened, labeled]
+      # Trigger when issue is labeled 'instagram-content-request'
+    description: "Agent HQ pattern - open issue with content request, system processes and comments with results"
 ```
 
 ---
@@ -485,429 +598,567 @@ triggers:
 ## Implementation Blueprint
 
 ### Workflow Steps
+[Ordered list of workflow phases. Each step becomes a section in workflow.md.]
 
 ```yaml
 steps:
-  - name: "Load Configuration"
-    description: "Read brand profile, weekly theme, post plan, reference links from repo or workflow inputs"
+  - name: "1. Input Validation & Setup"
+    description: "Parse inputs, validate required fields, load brand profile, initialize output directory structure"
     subagent: "none (main agent)"
-    tools: ["read_config.py"]
-    inputs: "Repo files at config/ OR workflow_dispatch inputs"
-    outputs: "Loaded config (JSON) with brand_profile, weekly_theme, post_plan, reference_links, publishing_mode"
-    failure_mode: "Config file missing or malformed JSON"
-    fallback: "Use workflow_dispatch inputs if files missing; fail with clear error if inputs also missing"
+    tools: ["validate_inputs.py", "setup_output.py"]
+    inputs: "brand_profile_path, weekly_theme, post_plan, reference_links, publishing_mode (all from workflow inputs)"
+    outputs: "validated_inputs.json, output directory initialized (output/instagram/YYYY-MM-DD/)"
+    failure_mode: "Missing required fields, invalid JSON, brand_profile.json not found"
+    fallback: "Halt workflow with clear error message listing missing/invalid inputs. Do not proceed."
 
-  - name: "Scrape Reference Content"
-    description: "Extract content from reference URLs for factual accuracy in posts"
-    subagent: "reference-scraper-specialist"
-    tools: ["scrape_references.py"]
-    inputs: "reference_links array from config"
-    outputs: "Extracted reference data (JSON) with url, context, text, key_facts, status per URL"
-    failure_mode: "URL unreachable, paywall, Firecrawl API quota exceeded"
-    fallback: "HTTP + BeautifulSoup fallback; if all scraping fails, continue with empty reference data (posts will be generic)"
-
-  - name: "Plan Content Strategy"
-    description: "Analyze brand profile and theme to create detailed content briefs for each post"
+  - name: "2. Reference Content Extraction"
+    description: "Fetch and extract clean content from reference URLs using Firecrawl, fall back to HTTP+BeautifulSoup if Firecrawl unavailable"
     subagent: "content-strategist"
-    tools: ["plan_content.py"]
-    inputs: "brand_profile, weekly_theme, post_plan, extracted reference data"
-    outputs: "Content briefs array (JSON) with one brief per post: post_id, type, topic, hook_angle, target_audience, reference_data_refs"
-    failure_mode: "Post plan is ambiguous or conflicts with brand guardrails"
-    fallback: "Generate generic content briefs based on post types only; log warning for review"
+    tools: ["fetch_reference_content.py"]
+    inputs: "reference_links (array of URLs), validated_inputs.json"
+    outputs: "reference_content.json with extracted text, metadata, links from each URL"
+    failure_mode: "URL unreachable, paywall, timeout, invalid response"
+    fallback: "Log failed URL, continue with available references. If ALL references fail, proceed without reference content (flag in strategy as 'no reference material')."
 
-  - name: "Generate Post Content (Parallel with Agent Teams)"
-    description: "Generate Instagram posts in parallel — each teammate creates one post with caption, hashtags, creative brief"
-    subagent: "copywriter-specialist (team lead) + copywriter-teammates (parallel execution)"
-    tools: ["generate_content.py (uses Agent Teams if enabled)"]
-    inputs: "Content briefs array, brand_profile, extracted reference data"
-    outputs: "Generated posts array (JSON) with hook, caption, cta, hashtags, creative_brief, image_prompt, alt_text per post"
-    failure_mode: "LLM API failure, rate limit, token limit exceeded"
-    fallback: "Retry with exponential backoff (3 attempts); if Agent Teams fails, fall back to sequential generation; if all fails, halt with error"
+  - name: "3. Content Strategy Generation"
+    description: "Analyze brand voice, weekly theme, post plan, and reference content. Generate content strategy with per-post briefs, themes, posting schedule."
+    subagent: "content-strategist"
+    tools: ["generate_content_strategy.py"]
+    inputs: "validated_inputs.json, reference_content.json, brand_profile.json"
+    outputs: "content_strategy.json with post briefs (one per post in post_plan), posting schedule, content themes"
+    failure_mode: "LLM API failure, insufficient context, unclear theme"
+    fallback: "Retry once with simplified prompt. If fails again, halt and open GitHub Issue requesting human clarification of theme."
 
-  - name: "Validate Hashtags"
-    description: "Verify all hashtags meet Instagram guidelines and brand strategy"
-    subagent: "hashtag-specialist"
-    tools: ["validate_hashtags.py"]
-    inputs: "Generated posts with hashtags"
-    outputs: "Validated posts with hashtags (replaced banned tags, ensured count 10-30 per post)"
-    failure_mode: "Hashtag API unreachable (if using external hashtag validation service)"
-    fallback: "Use local banned hashtag list; validate count only; log warning if external validation unavailable"
+  - name: "4. Post Generation (Parallel with Agent Teams)"
+    description: "Generate all post content in parallel (if 3+ posts) using Agent Teams. Each teammate generates one post: hook, caption, CTA, hashtags, alt text, creative brief, image prompt."
+    subagent: "Team lead (coordinates) + teammates (one per post)"
+    tools: ["generate_post_content.py (parallelized via Agent Teams)"]
+    inputs: "content_strategy.json, brand_profile.json"
+    outputs: "generated_content.json with complete content for all posts"
+    failure_mode: "LLM API failure, teammate timeout, incomplete generation"
+    fallback: "If Agent Teams fails, fall back to sequential generation (main agent + copywriter/hashtag/creative subagents). Slower but produces identical output."
 
-  - name: "Review Content Quality"
-    description: "Run quality gates: brand voice, prohibited claims, banned topics, format compliance"
+  - name: "5. Quality Review & Compliance Checks"
+    description: "Run multi-dimensional quality review: brand voice alignment, compliance (banned topics, prohibited claims), hashtag hygiene, format validation, claims verification."
     subagent: "reviewer-specialist"
     tools: ["review_content.py"]
-    inputs: "All generated posts, brand_profile with guardrails"
-    outputs: "Review report (JSON + Markdown) with per-post pass/fail, scores, compliance issues; approved_posts array (only posts that passed)"
-    failure_mode: "All posts fail review (e.g., severe brand voice mismatch)"
-    fallback: "Regenerate failed posts with feedback (max 2 retry cycles); if still failing, halt and notify for manual review"
+    inputs: "generated_content.json, brand_profile.json, reference_content.json"
+    outputs: "review_report.json with scores (brand_voice, compliance, hashtags, format, claims), overall score, pass/fail decision, detailed issues list"
+    failure_mode: "LLM API failure during review"
+    fallback: "Retry review once. If fails, default to FAIL (conservative - do not auto-publish without review). Output content pack for manual review."
 
-  - name: "Publish to Instagram OR Prepare Content Pack"
-    description: "If auto_publish: call Instagram Graph API; if content_pack_only: format manual upload pack"
-    subagent: "publisher-specialist (if auto_publish) OR none (if content_pack_only)"
-    tools: ["publish_to_instagram.py", "format_content_pack.py"]
-    inputs: "Approved posts, publishing_mode, INSTAGRAM_ACCESS_TOKEN (if auto_publish)"
-    outputs: "publish_log.json (if auto_publish) OR upload_checklist.md (if content_pack_only)"
-    failure_mode: "Instagram API rate limit, auth failure, invalid media format"
-    fallback: "Retry with backoff (3 attempts); if all publish attempts fail, fall back to content_pack_only mode and generate manual pack"
-
-  - name: "Archive and Index"
-    description: "Save all artifacts to output/instagram/ and update rolling archive index"
+  - name: "6. Gate Decision: Auto-Publish vs Manual Content Pack"
+    description: "Check review_report.json overall score and publishing_mode. If score >= 80/100 AND mode = auto_publish: proceed to publish. Otherwise: generate manual content pack."
     subagent: "none (main agent)"
-    tools: ["archive_content.py"]
-    inputs: "Generated content_pack JSON, review report, publish log (if any)"
-    outputs: "content_pack_{date}.md, content_pack_{date}.json, review_report_{date}.md, publish_log_{date}.json (if auto_publish), archive/latest.md (updated)"
-    failure_mode: "Filesystem write error, Git commit failure"
-    fallback: "Retry write; if fails, log error but do not halt (content is in memory, can be manually saved)"
+    tools: ["gate_decision.py"]
+    inputs: "review_report.json, publishing_mode (from inputs)"
+    outputs: "publish_decision.json with action (publish | manual_pack), rationale"
+    failure_mode: "N/A (deterministic logic)"
+    fallback: "N/A"
 
-  - name: "Commit Results"
-    description: "Stage and commit all output files to the repo"
+  - name: "7a. Auto-Publish to Instagram (if gate passes)"
+    description: "Format posts for Instagram Graph API, create media containers, execute publish API calls with retry logic, handle rate limiting, log results."
+    subagent: "instagram-publisher"
+    tools: ["publish_to_instagram.py"]
+    inputs: "generated_content.json, publish_decision.json, INSTAGRAM_ACCESS_TOKEN"
+    outputs: "publish_log.json with media IDs, permalinks, scheduled times, or error details"
+    failure_mode: "Rate limit (200/hour), auth failure, media URL not accessible, API error"
+    fallback: "On rate limit: pause, log next retry time. On auth/media failure: halt publish, fall back to step 7b (manual content pack), log specific error."
+
+  - name: "7b. Generate Manual Content Pack (if gate fails OR auto-publish fails)"
+    description: "Generate human-readable Markdown and JSON content packs, plus upload checklist with copy-paste ready captions, hashtags, posting times."
+    subagent: "instagram-publisher"
+    tools: ["generate_content_pack.py", "generate_upload_checklist.py"]
+    inputs: "generated_content.json, review_report.json"
+    outputs: "content_pack_YYYY-MM-DD.md, content_pack_YYYY-MM-DD.json, upload_checklist_YYYY-MM-DD.md"
+    failure_mode: "File write failure"
+    fallback: "Retry write once. If fails, log to stdout so GitHub Actions captures it in logs."
+
+  - name: "8. Update Latest Index & Archive"
+    description: "Update latest.md with links to current content pack. Commit all outputs to repo. Maintain rolling archive (keep last 12 weeks, delete older)."
     subagent: "none (main agent)"
-    tools: ["git_commit.sh"]
-    inputs: "All files in output/instagram/"
-    outputs: "Git commit with message 'chore(instagram): weekly content pack YYYY-MM-DD'"
-    failure_mode: "Git push rejected (merge conflict, branch protection)"
-    fallback: "Retry push with rebase; if fails, open PR instead of direct push; notify human if PR required"
+    tools: ["update_latest_index.py", "archive_cleanup.py"]
+    inputs: "All output files from step 7a/7b"
+    outputs: "latest.md updated, old archives pruned (12-week retention)"
+    failure_mode: "Git commit failure"
+    fallback: "Retry commit once. If fails, outputs still exist locally (GitHub Actions artifacts can preserve them)."
+
+  - name: "9. Notification & Summary"
+    description: "Post summary to GitHub Issue (Agent HQ) or send Slack notification. Include links to outputs, review score, publish status."
+    subagent: "none (main agent)"
+    tools: ["send_notification.py"]
+    inputs: "review_report.json, publish_log.json OR upload_checklist path, publish_decision.json"
+    outputs: "GitHub comment OR Slack message with summary + links"
+    failure_mode: "Notification delivery failure (Slack API, GitHub API)"
+    fallback: "Log notification failure. Do not halt workflow - outputs are still committed to repo."
 ```
 
 ### Tool Specifications
+[For each tool the system needs. Reference library/tool_catalog.md for reusable patterns.]
 
 ```yaml
 tools:
-  - name: "read_config.py"
-    purpose: "Load brand profile, weekly theme, post plan, reference links from repo files or workflow inputs"
-    catalog_pattern: "json_read_write (catalog pattern)"
+  - name: "validate_inputs.py"
+    purpose: "Parse and validate all workflow inputs (brand_profile, weekly_theme, post_plan, reference_links, publishing_mode)"
+    catalog_pattern: "new"
     inputs:
-      - "config_dir: str — Path to config directory (default: config/)"
-      - "workflow_inputs: dict — Workflow dispatch inputs (optional override)"
-    outputs: "JSON object with brand_profile, weekly_theme, post_plan, reference_links, publishing_mode"
-    dependencies: ["json (stdlib)", "pathlib (stdlib)"]
-    mcp_used: "filesystem"
-    error_handling: "FileNotFoundError → check workflow_inputs; JSONDecodeError → clear error with file path and line number"
+      - "brand_profile_path: str — Path to brand profile JSON file"
+      - "weekly_theme: str — Weekly content theme"
+      - "post_plan: str — JSON string with post counts and types"
+      - "reference_links: str — JSON array of URLs (optional)"
+      - "publishing_mode: str — auto_publish or content_pack_only"
+    outputs: "validated_inputs.json with parsed and validated data"
+    dependencies: ["json", "pathlib", "jsonschema"]
+    mcp_used: "none"
+    error_handling: "Raises ValueError with specific field if validation fails. Main workflow catches and halts."
 
-  - name: "scrape_references.py"
-    purpose: "Scrape reference URLs via Firecrawl (primary) or HTTP+BeautifulSoup (fallback) to extract content"
-    catalog_pattern: "firecrawl_scrape (catalog pattern with HTTP fallback)"
+  - name: "setup_output.py"
+    purpose: "Initialize output directory structure for this run (output/instagram/YYYY-MM-DD/)"
+    catalog_pattern: "new"
     inputs:
-      - "reference_links: list[dict] — Array of {url, context} objects"
-      - "api_key: str — Firecrawl API key from env (FIRECRAWL_API_KEY)"
-    outputs: "JSON array of {url, context, extracted_text, key_facts, status} objects"
+      - "base_path: str — Base output path (default: output/instagram)"
+    outputs: "Created directories, returns output_dir path"
+    dependencies: ["pathlib"]
+    mcp_used: "none"
+    error_handling: "Creates directories if missing. Logs warning if directory exists (overwrite scenario)."
+
+  - name: "fetch_reference_content.py"
+    purpose: "Fetch and extract clean content from reference URLs using Firecrawl, fall back to HTTP+BeautifulSoup"
+    catalog_pattern: "firecrawl_scrape + rest_client fallback"
+    inputs:
+      - "reference_links: list[dict] — Array of {url, purpose} objects"
+    outputs: "reference_content.json with {url, content, metadata, success} per link"
     dependencies: ["firecrawl-py", "httpx", "beautifulsoup4"]
-    mcp_used: "firecrawl (primary), fetch (fallback)"
-    error_handling: "ConnectionError → try HTTP fallback; rate limit → log warning, skip URL; paywall detected → log warning, mark as 'inaccessible'"
+    mcp_used: "firecrawl (primary), none (fallback)"
+    error_handling: "Try Firecrawl first. On failure, try HTTP GET + BeautifulSoup. Log failure and continue if both fail."
 
-  - name: "plan_content.py"
-    purpose: "Generate content briefs for each post based on brand profile and weekly theme"
-    catalog_pattern: "llm_prompt (catalog pattern)"
+  - name: "generate_content_strategy.py"
+    purpose: "Generate content strategy: post briefs, themes, posting schedule based on brand voice and weekly theme"
+    catalog_pattern: "structured_extract"
     inputs:
       - "brand_profile: dict — Brand voice and guardrails"
-      - "weekly_theme: str — This week's content focus"
-      - "post_plan: dict — Types and counts of posts to create"
-      - "reference_data: list[dict] — Extracted reference content"
-    outputs: "JSON array of content briefs with post_id, type, topic, hook_angle, target_audience, reference_data_refs"
-    dependencies: ["anthropic or openai"]
+      - "weekly_theme: str — Content theme"
+      - "post_plan: dict — Post counts and types"
+      - "reference_content: dict — Extracted reference material"
+    outputs: "content_strategy.json with per-post briefs, themes, schedule"
+    dependencies: ["anthropic"]
     mcp_used: "anthropic"
-    error_handling: "LLM API error → retry with backoff (3 attempts); if all fail, generate generic briefs based on post types only"
+    error_handling: "Retry once with simplified prompt on LLM failure. Raise exception if both attempts fail."
 
-  - name: "generate_content.py"
-    purpose: "Generate Instagram posts with captions, hashtags, creative briefs (uses Agent Teams for parallel execution if enabled)"
-    catalog_pattern: "structured_extract (catalog pattern) + Agent Teams coordination"
+  - name: "generate_post_content.py"
+    purpose: "Generate complete post content (hook, caption, CTA, hashtags, alt text, creative brief, image prompt) for all posts. Supports both parallel (Agent Teams) and sequential execution."
+    catalog_pattern: "llm_prompt + structured_extract (parallelized)"
     inputs:
-      - "content_briefs: list[dict] — Content strategy for each post"
+      - "content_strategy: dict — Post briefs from strategist"
       - "brand_profile: dict — Brand voice guidelines"
-      - "reference_data: list[dict] — Scraped reference content"
-      - "enable_agent_teams: bool — Whether to use parallel generation (env var or config)"
-    outputs: "JSON array of posts with hook, caption, cta, hashtags, creative_brief, image_prompt, alt_text"
-    dependencies: ["anthropic or openai"]
+      - "use_agent_teams: bool — True if 3+ posts, False otherwise"
+    outputs: "generated_content.json with complete content for all posts"
+    dependencies: ["anthropic", "json"]
     mcp_used: "anthropic"
-    error_handling: "LLM timeout → retry; if Agent Teams fails, fall back to sequential; validate JSON schema for each post, retry if invalid (max 2 retries per post)"
-
-  - name: "validate_hashtags.py"
-    purpose: "Check hashtags against banned list, ensure count 10-30, replace banned tags with alternatives"
-    catalog_pattern: "filter_sort (catalog pattern with custom validation)"
-    inputs:
-      - "posts: list[dict] — Generated posts with hashtags"
-      - "banned_hashtags: list[str] — Known banned/flagged Instagram hashtags (from config or hardcoded list)"
-      - "brand_strategy: dict — Brand hashtag strategy from brand_profile"
-    outputs: "JSON array of posts with validated/corrected hashtags"
-    dependencies: ["None (stdlib only)"]
-    mcp_used: "none"
-    error_handling: "If hashtag count < 10, generate additional relevant tags; if > 30, truncate to 30 with log warning"
+    error_handling: "If Agent Teams fails, fall back to sequential generation. Log mode used (parallel vs sequential)."
 
   - name: "review_content.py"
-    purpose: "Run quality gates on generated content: brand voice scoring, prohibited claims detection, format validation"
-    catalog_pattern: "llm_prompt (for brand voice scoring) + custom validation logic"
+    purpose: "Run multi-dimensional quality review: brand voice (0-100), compliance checks, hashtag hygiene, format validation, claims verification. Output pass/fail decision."
+    catalog_pattern: "multi_dimension_scorer + structured_extract"
     inputs:
-      - "posts: list[dict] — All generated posts"
-      - "brand_profile: dict — Brand guardrails (prohibited_claims, banned_topics, do/dont lists)"
-    outputs: "JSON review report with per-post scores (brand_voice_score, compliance_status) + Markdown report for human review"
-    dependencies: ["anthropic or openai"]
+      - "generated_content: dict — All post content"
+      - "brand_profile: dict — Brand voice and guardrails"
+      - "reference_content: dict — For claims verification"
+    outputs: "review_report.json with dimension scores, overall score, pass/fail, detailed issues"
+    dependencies: ["anthropic", "json"]
     mcp_used: "anthropic"
-    error_handling: "If all posts fail, log detailed feedback and halt; if some fail, return approved posts only and log failed posts with reasons"
+    error_handling: "Retry once on LLM failure. If fails, return FAIL decision (conservative default)."
+
+  - name: "gate_decision.py"
+    purpose: "Evaluate review score and publishing_mode. Decide: auto-publish OR manual content pack."
+    catalog_pattern: "new"
+    inputs:
+      - "review_report: dict — Review scores and pass/fail"
+      - "publishing_mode: str — auto_publish or content_pack_only"
+    outputs: "publish_decision.json with action (publish | manual_pack) and rationale"
+    dependencies: ["json"]
+    mcp_used: "none"
+    error_handling: "Deterministic logic - no failure modes."
 
   - name: "publish_to_instagram.py"
-    purpose: "Publish approved posts to Instagram via Graph API with rate limiting and retry logic"
-    catalog_pattern: "rest_client (catalog pattern) with Instagram-specific logic"
+    purpose: "Publish posts to Instagram via Graph API. Create media containers, execute publish calls, handle rate limiting, log results."
+    catalog_pattern: "rest_client + oauth_token_refresh"
     inputs:
-      - "posts: list[dict] — Approved posts to publish"
-      - "access_token: str — Instagram Graph API access token (env var INSTAGRAM_ACCESS_TOKEN)"
-      - "ig_user_id: str — Instagram Business account user ID (env var INSTAGRAM_USER_ID)"
-    outputs: "JSON publish log with per-post results (media_id, permalink, or error)"
-    dependencies: ["httpx", "tenacity (for retry)"]
-    mcp_used: "fetch"
-    error_handling: "Rate limit (429) → exponential backoff, max 5 retries; auth error (401) → halt with clear token error; network error → retry 3 times; if all posts fail, return error log and recommend content_pack_only fallback"
+      - "generated_content: dict — Posts to publish"
+      - "access_token: str — Instagram Graph API token (from env)"
+      - "ig_user_id: str — Instagram Business Account ID (from env)"
+    outputs: "publish_log.json with media IDs, permalinks, errors"
+    dependencies: ["httpx", "tenacity"]
+    mcp_used: "none (direct HTTP)"
+    error_handling: "Retry with exponential backoff on transient errors. On rate limit (429), log and halt. On auth failure, halt and log error."
 
-  - name: "format_content_pack.py"
-    purpose: "Format generated posts into human-readable Markdown content pack and manual upload checklist"
-    catalog_pattern: "transform_map (catalog pattern) + Markdown templating"
+  - name: "generate_content_pack.py"
+    purpose: "Generate human-readable Markdown content pack from generated_content.json"
+    catalog_pattern: "json_read_write"
     inputs:
-      - "posts: list[dict] — Approved posts"
-      - "weekly_theme: str"
-      - "date: str — Generation date"
-    outputs: "Markdown files: content_pack_{date}.md (formatted posts) and upload_checklist_{date}.md (step-by-step manual upload)"
-    dependencies: ["jinja2 (templating)"]
-    mcp_used: "filesystem"
-    error_handling: "Template rendering error → use plain text fallback format; file write error → retry once, then fail with error"
+      - "generated_content: dict — All post content"
+      - "review_report: dict — Review scores"
+      - "output_dir: str — Where to write file"
+    outputs: "content_pack_YYYY-MM-DD.md and content_pack_YYYY-MM-DD.json"
+    dependencies: ["json", "pathlib"]
+    mcp_used: "none"
+    error_handling: "Retry write once on IOError. Log error if fails."
 
-  - name: "archive_content.py"
-    purpose: "Copy all generated files to archive directory and update rolling latest.md index"
-    catalog_pattern: "file I/O (stdlib)"
+  - name: "generate_upload_checklist.py"
+    purpose: "Generate manual upload checklist with copy-paste ready captions, hashtags, posting times"
+    catalog_pattern: "new"
     inputs:
-      - "content_pack_json: dict — Full content pack data"
-      - "output_dir: str — Path to output/instagram/"
-      - "date: str — Generation date"
-    outputs: "Updated archive/latest.md with links to 10 most recent content packs"
-    dependencies: ["pathlib (stdlib)", "json (stdlib)"]
-    mcp_used: "filesystem"
-    error_handling: "File write error → retry; if archive fails, continue (content is already in main output dir)"
+      - "generated_content: dict — All post content"
+      - "output_dir: str — Where to write file"
+    outputs: "upload_checklist_YYYY-MM-DD.md"
+    dependencies: ["pathlib"]
+    mcp_used: "none"
+    error_handling: "Retry write once on IOError."
 
-  - name: "git_commit.sh"
-    purpose: "Stage and commit all output files to the repo"
-    catalog_pattern: "git_commit_push (catalog pattern)"
+  - name: "update_latest_index.py"
+    purpose: "Update latest.md with links to current content pack"
+    catalog_pattern: "new"
     inputs:
-      - "file_paths: list[str] — Specific files to commit"
-      - "commit_message: str — Commit message"
-    outputs: "Git commit SHA"
-    dependencies: ["git CLI"]
-    mcp_used: "none (subprocess)"
-    error_handling: "Push rejected → retry with rebase; if still fails, open PR instead of direct push"
+      - "content_pack_path: str — Path to current content pack"
+      - "review_report_path: str — Path to review report"
+      - "latest_index_path: str — Path to latest.md (default: output/instagram/latest.md)"
+    outputs: "Updated latest.md"
+    dependencies: ["pathlib"]
+    mcp_used: "none"
+    error_handling: "Create latest.md if missing. Overwrite existing."
+
+  - name: "archive_cleanup.py"
+    purpose: "Prune old content packs (keep last 12 weeks, delete older)"
+    catalog_pattern: "new"
+    inputs:
+      - "archive_dir: str — Path to archive directory (output/instagram/)"
+      - "retention_weeks: int — How many weeks to keep (default: 12)"
+    outputs: "List of deleted files"
+    dependencies: ["pathlib", "datetime"]
+    mcp_used: "none"
+    error_handling: "Log deletion errors but continue (old archives are not critical)."
+
+  - name: "send_notification.py"
+    purpose: "Send summary notification to GitHub Issue comment or Slack"
+    catalog_pattern: "slack_notify + github_create_issue"
+    inputs:
+      - "summary: dict — Workflow summary data"
+      - "notification_target: str — github or slack"
+      - "target_id: str — Issue number or Slack channel"
+    outputs: "Notification sent confirmation"
+    dependencies: ["httpx"]
+    mcp_used: "slack (optional)"
+    error_handling: "Log failure but do not halt workflow. Outputs are in repo regardless of notification success."
 ```
 
 ### Per-Tool Pseudocode
-
 ```python
-# read_config.py
+# validate_inputs.py
 def main():
-    # PATTERN: json_read_write
-    # Load config files from repo OR workflow inputs
-    args = parse_args()  # --config-dir, --workflow-inputs (JSON string)
-    
-    # Try repo files first
-    try:
-        brand_profile = json.loads(Path(args.config_dir, "brand_profile.json").read_text())
-        weekly_theme = Path(args.config_dir, "weekly_theme.txt").read_text().strip()
-        post_plan = json.loads(Path(args.config_dir, "post_plan.json").read_text())
-        reference_links = json.loads(Path(args.config_dir, "reference_links.json").read_text())
-        publishing_mode = os.environ.get("PUBLISHING_MODE", "content_pack_only")
-    except FileNotFoundError:
-        # Fall back to workflow inputs
-        if not args.workflow_inputs:
-            raise ValueError("Config files missing and no workflow inputs provided")
-        inputs = json.loads(args.workflow_inputs)
-        brand_profile = inputs["brand_profile"]
-        weekly_theme = inputs["weekly_theme"]
-        # ... etc
-    
-    # Output
-    print(json.dumps({
+    # PATTERN: Input validation with JSON schema
+    # Step 1: Parse inputs from args or env
+    args = parse_args()  # brand_profile_path, weekly_theme, post_plan, reference_links, publishing_mode
+
+    # Step 2: Load brand_profile.json
+    # GOTCHA: Path might be relative or absolute
+    brand_profile = json.loads(Path(args.brand_profile_path).read_text())
+
+    # Step 3: Validate required fields in brand_profile
+    required = ["brand_name", "tone", "target_audience", "products", "banned_topics", "preferred_cta"]
+    for field in required:
+        if field not in brand_profile:
+            raise ValueError(f"Missing required field in brand_profile: {field}")
+
+    # Step 4: Parse and validate post_plan JSON
+    post_plan = json.loads(args.post_plan)
+    if not any(k in post_plan for k in ["reels", "carousels", "single_images"]):
+        raise ValueError("post_plan must specify at least one post type")
+
+    # Step 5: Parse reference_links (optional)
+    reference_links = json.loads(args.reference_links) if args.reference_links else []
+
+    # Step 6: Validate publishing_mode
+    if args.publishing_mode not in ["auto_publish", "content_pack_only"]:
+        raise ValueError(f"Invalid publishing_mode: {args.publishing_mode}")
+
+    # Step 7: Output validated inputs
+    output = {
         "brand_profile": brand_profile,
-        "weekly_theme": weekly_theme,
+        "weekly_theme": args.weekly_theme,
         "post_plan": post_plan,
         "reference_links": reference_links,
-        "publishing_mode": publishing_mode
-    }))
+        "publishing_mode": args.publishing_mode
+    }
+    print(json.dumps(output, indent=2))
 
-# scrape_references.py
+# fetch_reference_content.py
 def main():
     # PATTERN: firecrawl_scrape with HTTP fallback
-    # CRITICAL: Firecrawl has usage limits — implement fallback
-    args = parse_args()  # --reference-links (JSON string)
-    reference_links = json.loads(args.reference_links)
-    
+    # CRITICAL: Firecrawl requires API key, HTTP fallback does not
+    args = parse_args()  # reference_links (JSON array)
     results = []
-    for ref in reference_links:
+
+    for link in json.loads(args.reference_links):
+        url = link["url"]
         try:
             # Try Firecrawl first
-            data = firecrawl_scrape(ref["url"], os.environ["FIRECRAWL_API_KEY"])
+            from firecrawl import FirecrawlApp
+            app = FirecrawlApp(api_key=os.environ["FIRECRAWL_API_KEY"])
+            scraped = app.scrape_url(url, params={"formats": ["markdown"]})
             results.append({
-                "url": ref["url"],
-                "context": ref["context"],
-                "extracted_text": data["markdown"],
-                "key_facts": extract_key_facts(data["markdown"]),  # LLM or regex
-                "status": "success"
+                "url": url,
+                "content": scraped.get("markdown", ""),
+                "metadata": scraped.get("metadata", {}),
+                "success": True,
+                "method": "firecrawl"
             })
-        except RateLimitError:
-            # Fall back to HTTP + BeautifulSoup
-            data = http_scrape(ref["url"])
-            results.append({..., "status": "fallback"})
         except Exception as e:
-            # Log and continue
-            results.append({..., "status": "failed", "error": str(e)})
-    
-    print(json.dumps(results))
+            logging.warning(f"Firecrawl failed for {url}: {e}, trying HTTP fallback")
+            try:
+                # HTTP + BeautifulSoup fallback
+                import httpx
+                from bs4 import BeautifulSoup
+                resp = httpx.get(url, timeout=15, follow_redirects=True)
+                resp.raise_for_status()
+                soup = BeautifulSoup(resp.text, "html.parser")
+                # Extract main content (heuristic: get all <p> tags)
+                content = "\n\n".join(p.get_text() for p in soup.find_all("p"))
+                results.append({
+                    "url": url,
+                    "content": content,
+                    "metadata": {"title": soup.title.string if soup.title else ""},
+                    "success": True,
+                    "method": "http_fallback"
+                })
+            except Exception as e2:
+                logging.error(f"Both Firecrawl and HTTP failed for {url}: {e2}")
+                results.append({
+                    "url": url,
+                    "content": "",
+                    "metadata": {},
+                    "success": False,
+                    "error": str(e2)
+                })
 
-# generate_content.py
+    print(json.dumps({"reference_content": results}, indent=2))
+
+# generate_content_strategy.py
 def main():
-    # PATTERN: structured_extract + Agent Teams
-    # CRITICAL: Claude has 8k output token limit — batch posts to avoid hitting limit
-    args = parse_args()  # --content-briefs, --brand-profile, --reference-data, --enable-agent-teams
-    
-    if args.enable_agent_teams and len(content_briefs) >= 3:
-        # Use Agent Teams for parallel generation
-        posts = generate_with_agent_teams(content_briefs, brand_profile, reference_data)
+    # PATTERN: structured_extract
+    # CRITICAL: Prompt must include brand voice examples, weekly theme context, reference material
+    args = parse_args()
+    brand_profile = json.loads(args.brand_profile)
+    weekly_theme = args.weekly_theme
+    post_plan = json.loads(args.post_plan)
+    reference_content = json.loads(args.reference_content)
+
+    # Build context for LLM
+    context = f"""
+    Brand: {brand_profile['brand_name']}
+    Tone: {brand_profile['tone']}
+    Target Audience: {brand_profile['target_audience']}
+    Weekly Theme: {weekly_theme}
+
+    Post Plan:
+    - Reels: {post_plan.get('reels', 0)}
+    - Carousels: {post_plan.get('carousels', 0)}
+    - Single Images: {post_plan.get('single_images', 0)}
+
+    Reference Material:
+    {reference_content}
+
+    Generate a content strategy with per-post briefs.
+    """
+
+    schema = {
+        "type": "object",
+        "properties": {
+            "post_briefs": {"type": "array", "items": {"type": "object"}},
+            "posting_schedule": {"type": "array"},
+            "content_themes": {"type": "array"}
+        },
+        "required": ["post_briefs", "posting_schedule"]
+    }
+
+    # Call structured_extract (uses Anthropic with JSON schema validation)
+    result = structured_extract(context, schema, retries=2)
+    print(json.dumps(result["data"], indent=2))
+
+# generate_post_content.py
+def main():
+    # PATTERN: llm_prompt + structured_extract (parallelized with Agent Teams if 3+ posts)
+    # CRITICAL: Check post count to decide parallel vs sequential
+    args = parse_args()
+    content_strategy = json.loads(args.content_strategy)
+    brand_profile = json.loads(args.brand_profile)
+    post_briefs = content_strategy["post_briefs"]
+
+    if len(post_briefs) >= 3 and args.use_agent_teams:
+        # Parallel generation with Agent Teams
+        logging.info("Using Agent Teams for parallel generation")
+        # Team lead creates task list, spawns teammates
+        # Each teammate generates one post
+        # Merge results
+        generated_posts = agent_teams_generate(post_briefs, brand_profile)
     else:
         # Sequential generation
-        posts = []
-        for brief in content_briefs:
-            post = generate_single_post(brief, brand_profile, reference_data)
-            posts.append(post)
-    
-    # Validate each post JSON schema
-    for post in posts:
-        validate_post_schema(post)  # raises if invalid
-    
-    print(json.dumps(posts))
+        logging.info("Using sequential generation")
+        generated_posts = []
+        for brief in post_briefs:
+            post = generate_single_post(brief, brand_profile)
+            generated_posts.append(post)
 
-def generate_single_post(brief, brand_profile, reference_data):
-    # Use structured_extract pattern with JSON schema
-    schema = {...}  # post schema with hook, caption, cta, hashtags, etc.
-    prompt = build_post_prompt(brief, brand_profile, reference_data)
-    result = structured_extract(prompt, schema, retries=2)
-    return result["data"]
+    print(json.dumps({"posts": generated_posts}, indent=2))
 
 # review_content.py
 def main():
-    # PATTERN: LLM-based scoring + rule-based validation
-    # Brand voice scoring uses Claude with reference examples
-    # Prohibited claims uses keyword matching + Claude verification
-    args = parse_args()  # --posts, --brand-profile
-    
-    review_report = {
-        "overall_status": "PENDING",
-        "per_post_results": [],
-        "approved_posts": [],
-        "failed_posts": []
+    # PATTERN: multi_dimension_scorer + structured_extract
+    # CRITICAL: 5 dimensions - brand_voice, compliance, hashtags, format, claims
+    args = parse_args()
+    generated_content = json.loads(args.generated_content)
+    brand_profile = json.loads(args.brand_profile)
+    reference_content = json.loads(args.reference_content)
+
+    dimensions = [
+        {"name": "brand_voice", "max_points": 100, "scorer": score_brand_voice},
+        {"name": "compliance", "max_points": 100, "scorer": score_compliance},
+        {"name": "hashtags", "max_points": 100, "scorer": score_hashtags},
+        {"name": "format", "max_points": 100, "scorer": score_format},
+        {"name": "claims", "max_points": 100, "scorer": score_claims}
+    ]
+
+    scores = {}
+    for dim in dimensions:
+        scores[dim["name"]] = dim["scorer"](generated_content, brand_profile, reference_content)
+
+    overall = sum(scores.values()) / len(scores)
+    pass_fail = "PASS" if overall >= 80 else "FAIL"
+
+    report = {
+        "scores": scores,
+        "overall_score": overall,
+        "pass_fail": pass_fail,
+        "issues": []  # Detailed issues list from scorers
     }
-    
-    for post in posts:
-        score = score_brand_voice(post, brand_profile)  # 0-100% via LLM
-        claims = detect_prohibited_claims(post, brand_profile)  # keyword scan
-        topics = detect_banned_topics(post, brand_profile)  # keyword scan
-        format_ok = validate_format(post)  # caption length, hashtag placement
-        
-        passed = (score >= 85 and not claims and not topics and format_ok)
-        
-        review_report["per_post_results"].append({
-            "post_id": post["post_id"],
-            "brand_voice_score": score,
-            "prohibited_claims": claims,
-            "banned_topics": topics,
-            "format_compliance": format_ok,
-            "status": "PASS" if passed else "FAIL"
-        })
-        
-        if passed:
-            review_report["approved_posts"].append(post)
-        else:
-            review_report["failed_posts"].append(post)
-    
-    review_report["overall_status"] = "PASS" if len(review_report["failed_posts"]) == 0 else "FAIL"
-    
-    print(json.dumps(review_report))
+
+    print(json.dumps(report, indent=2))
 
 # publish_to_instagram.py
 def main():
-    # PATTERN: rest_client with Instagram Graph API
-    # CRITICAL: Rate limit is 200 calls/hour — implement retry with backoff
-    # CRITICAL: Instagram does NOT support scheduled posts via API — must be immediate
-    args = parse_args()  # --posts, --access-token, --ig-user-id
-    
-    publish_log = {
-        "published_at": datetime.utcnow().isoformat(),
-        "mode": "auto_publish",
-        "results": []
-    }
-    
-    for post in posts:
+    # PATTERN: rest_client + exponential backoff retry
+    # CRITICAL: Instagram Graph API requires public HTTPS URLs for media
+    # CRITICAL: Rate limit is 200 calls/hour
+    args = parse_args()
+    generated_content = json.loads(args.generated_content)
+    access_token = os.environ["INSTAGRAM_ACCESS_TOKEN"]
+    ig_user_id = os.environ["INSTAGRAM_USER_ID"]
+
+    results = []
+    for post in generated_content["posts"]:
         try:
-            # Create media container
-            result = create_ig_media(post, args.access_token, args.ig_user_id)
-            publish_log["results"].append({
+            # Step 1: Create media container (requires media URL)
+            # GOTCHA: Media must be publicly accessible HTTPS URL
+            container_resp = create_media_container(post, ig_user_id, access_token)
+            container_id = container_resp["id"]
+
+            # Step 2: Publish media container
+            publish_resp = publish_media(container_id, ig_user_id, access_token)
+
+            results.append({
                 "post_id": post["post_id"],
                 "status": "success",
-                "ig_media_id": result["id"],
-                "permalink": result.get("permalink")
+                "ig_media_id": publish_resp["id"],
+                "ig_permalink": f"https://instagram.com/p/{publish_resp['id']}"
             })
-        except RateLimitError as e:
-            # Retry with exponential backoff
-            time.sleep(60)  # wait 1 minute, then retry
-            # ... retry logic
-        except Exception as e:
-            publish_log["results"].append({
-                "post_id": post["post_id"],
-                "status": "failed",
-                "error": str(e)
-            })
-    
-    print(json.dumps(publish_log))
+        except HTTPError as e:
+            if e.response.status_code == 429:
+                # Rate limit hit
+                logging.error("Rate limit exceeded, halting publish")
+                results.append({
+                    "post_id": post["post_id"],
+                    "status": "failed",
+                    "error": "Rate limit exceeded"
+                })
+                break
+            else:
+                results.append({
+                    "post_id": post["post_id"],
+                    "status": "failed",
+                    "error": str(e)
+                })
+
+    print(json.dumps({"results": results}, indent=2))
+
+# generate_content_pack.py
+def main():
+    # PATTERN: json_read_write
+    args = parse_args()
+    generated_content = json.loads(args.generated_content)
+    review_report = json.loads(args.review_report)
+    output_dir = Path(args.output_dir)
+
+    # Write JSON
+    json_path = output_dir / f"content_pack_{datetime.now().strftime('%Y-%m-%d')}.json"
+    json_path.write_text(json.dumps(generated_content, indent=2))
+
+    # Write Markdown
+    md_path = output_dir / f"content_pack_{datetime.now().strftime('%Y-%m-%d')}.md"
+    md_content = format_content_pack_markdown(generated_content, review_report)
+    md_path.write_text(md_content)
+
+    print(json.dumps({"json_path": str(json_path), "md_path": str(md_path)}, indent=2))
 ```
 
 ### Integration Points
-
 ```yaml
 SECRETS:
-  - name: "ANTHROPIC_API_KEY"
-    purpose: "Claude API for content generation and brand voice scoring"
+  - name: "FIRECRAWL_API_KEY"
+    purpose: "Firecrawl API for reference content extraction"
     required: true
 
-  - name: "FIRECRAWL_API_KEY"
-    purpose: "Firecrawl API for scraping reference URLs"
-    required: false (has HTTP fallback)
+  - name: "ANTHROPIC_API_KEY"
+    purpose: "Claude API for content generation and review"
+    required: true
 
   - name: "INSTAGRAM_ACCESS_TOKEN"
-    purpose: "Instagram Graph API access token for publishing posts"
-    required: true (if auto_publish mode)
+    purpose: "Instagram Graph API long-lived access token"
+    required: true (only for auto_publish mode)
 
   - name: "INSTAGRAM_USER_ID"
-    purpose: "Instagram Business account user ID for media creation"
-    required: true (if auto_publish mode)
+    purpose: "Instagram Business Account ID for Graph API"
+    required: true (only for auto_publish mode)
+
+  - name: "SLACK_WEBHOOK_URL"
+    purpose: "Slack notifications (optional)"
+    required: false
 
 ENVIRONMENT:
   - file: ".env.example"
     vars:
-      - "ANTHROPIC_API_KEY=your_api_key_here  # Required: Claude API key"
-      - "FIRECRAWL_API_KEY=your_api_key_here  # Optional: Firecrawl for reference scraping (has fallback)"
-      - "INSTAGRAM_ACCESS_TOKEN=your_token_here  # Required if auto_publish: IG Graph API token"
-      - "INSTAGRAM_USER_ID=your_user_id_here  # Required if auto_publish: IG Business account ID"
-      - "PUBLISHING_MODE=content_pack_only  # auto_publish or content_pack_only"
-      - "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=true  # Enable Agent Teams for parallel generation"
+      - "FIRECRAWL_API_KEY=your_firecrawl_key_here  # Get from firecrawl.dev"
+      - "ANTHROPIC_API_KEY=your_anthropic_key_here  # Claude API key"
+      - "INSTAGRAM_ACCESS_TOKEN=your_ig_token_here  # Long-lived token (60 days)"
+      - "INSTAGRAM_USER_ID=your_ig_user_id_here  # Business account ID"
+      - "SLACK_WEBHOOK_URL=https://hooks.slack.com/...  # Optional"
 
 DEPENDENCIES:
   - file: "requirements.txt"
     packages:
-      - "anthropic>=0.40.0  # Claude API client"
-      - "firecrawl-py>=0.0.20  # Firecrawl scraping API"
-      - "httpx>=0.27.0  # HTTP client for Instagram API and fallback scraping"
-      - "beautifulsoup4>=4.12.0  # HTML parsing for fallback scraping"
-      - "tenacity>=8.0.0  # Retry logic with exponential backoff"
-      - "jinja2>=3.1.0  # Templating for content pack markdown"
-      - "jsonschema>=4.0.0  # JSON schema validation for post structure"
+      - "anthropic>=0.28.0  # Claude API client"
+      - "firecrawl-py>=0.0.16  # Firecrawl scraping"
+      - "httpx>=0.27.0  # HTTP client with retry logic"
+      - "beautifulsoup4>=4.12.0  # HTML parsing (fallback)"
+      - "tenacity>=8.2.0  # Retry logic"
+      - "jsonschema>=4.20.0  # JSON validation"
+      - "python-dateutil>=2.8.2  # Date parsing"
 
 GITHUB_ACTIONS:
-  - trigger: "schedule"
-    config: "cron: '0 9 * * 1'  # Every Monday at 09:00 UTC"
+  - trigger: "schedule (cron: 0 9 * * 1)"
+    config: "Weekly Monday 09:00 UTC"
   - trigger: "workflow_dispatch"
-    config: "Inputs: weekly_theme (string, required), publishing_mode (choice, default content_pack_only), post_plan_json (string, optional)"
+    config: "Manual with inputs: brand_profile_path, weekly_theme, post_plan, reference_links, publishing_mode"
+  - trigger: "issues (labeled: instagram-content-request)"
+    config: "Agent HQ pattern - parse issue body for inputs"
 ```
 
 ---
@@ -915,150 +1166,153 @@ GITHUB_ACTIONS:
 ## Validation Loop
 
 ### Level 1: Syntax & Structure
-
 ```bash
 # Run FIRST — every tool must pass before proceeding to Level 2
 # AST parse — verify valid Python syntax
-python -c "import ast; ast.parse(open('tools/read_config.py').read())"
-python -c "import ast; ast.parse(open('tools/scrape_references.py').read())"
-python -c "import ast; ast.parse(open('tools/plan_content.py').read())"
-python -c "import ast; ast.parse(open('tools/generate_content.py').read())"
-python -c "import ast; ast.parse(open('tools/validate_hashtags.py').read())"
+python -c "import ast; ast.parse(open('tools/validate_inputs.py').read())"
+python -c "import ast; ast.parse(open('tools/setup_output.py').read())"
+python -c "import ast; ast.parse(open('tools/fetch_reference_content.py').read())"
+python -c "import ast; ast.parse(open('tools/generate_content_strategy.py').read())"
+python -c "import ast; ast.parse(open('tools/generate_post_content.py').read())"
 python -c "import ast; ast.parse(open('tools/review_content.py').read())"
+python -c "import ast; ast.parse(open('tools/gate_decision.py').read())"
 python -c "import ast; ast.parse(open('tools/publish_to_instagram.py').read())"
-python -c "import ast; ast.parse(open('tools/format_content_pack.py').read())"
-python -c "import ast; ast.parse(open('tools/archive_content.py').read())"
+python -c "import ast; ast.parse(open('tools/generate_content_pack.py').read())"
+python -c "import ast; ast.parse(open('tools/generate_upload_checklist.py').read())"
+python -c "import ast; ast.parse(open('tools/update_latest_index.py').read())"
+python -c "import ast; ast.parse(open('tools/archive_cleanup.py').read())"
+python -c "import ast; ast.parse(open('tools/send_notification.py').read())"
 
 # Import check — verify no missing dependencies
-python -c "import importlib; importlib.import_module('tools.read_config')"
-python -c "import importlib; importlib.import_module('tools.scrape_references')"
+python -c "import importlib; importlib.import_module('tools.validate_inputs')"
+python -c "import importlib; importlib.import_module('tools.setup_output')"
 # ... repeat for all tools
 
 # Structure check — verify main() exists
-python -c "from tools.read_config import main; assert callable(main)"
-python -c "from tools.scrape_references import main; assert callable(main)"
+python -c "from tools.validate_inputs import main; assert callable(main)"
+python -c "from tools.setup_output import main; assert callable(main)"
 # ... repeat for all tools
 
-# Subagent file validation
+# Subagent file validation — verify YAML frontmatter
 python -c "import yaml; yaml.safe_load(open('.claude/agents/content-strategist.md').read().split('---')[1])"
-python -c "import yaml; yaml.safe_load(open('.claude/agents/reference-scraper-specialist.md').read().split('---')[1])"
-# ... repeat for all subagent files
-
-# YAML validation for GitHub Actions
-python -c "import yaml; yaml.safe_load(open('.github/workflows/weekly_instagram_content.yml').read())"
+python -c "import yaml; yaml.safe_load(open('.claude/agents/copywriter-specialist.md').read().split('---')[1])"
+python -c "import yaml; yaml.safe_load(open('.claude/agents/hashtag-specialist.md').read().split('---')[1])"
+python -c "import yaml; yaml.safe_load(open('.claude/agents/creative-director.md').read().split('---')[1])"
+python -c "import yaml; yaml.safe_load(open('.claude/agents/reviewer-specialist.md').read().split('---')[1])"
+python -c "import yaml; yaml.safe_load(open('.claude/agents/instagram-publisher.md').read().split('---')[1])"
 
 # Expected: All pass with no errors. If any fail, fix before proceeding.
 ```
 
 ### Level 2: Unit Tests
-
 ```bash
 # Run SECOND — each tool must produce correct output for sample inputs
-# Test each tool independently with mock/sample data
+# Test validate_inputs with sample data
+echo '{"brand_name": "TestBrand", "tone": "friendly", "target_audience": "test", "products": ["test"], "banned_topics": [], "preferred_cta": ["test"]}' > /tmp/brand_profile.json
+python tools/validate_inputs.py \
+  --brand_profile_path /tmp/brand_profile.json \
+  --weekly_theme "Test Theme" \
+  --post_plan '{"reels": 2, "carousels": 1}' \
+  --reference_links '[]' \
+  --publishing_mode "content_pack_only"
+# Expected: Valid JSON output with parsed inputs
 
-# Test read_config
-python tools/read_config.py --config-dir test_fixtures/config/
-# Expected output: Valid JSON with brand_profile, weekly_theme, post_plan, reference_links, publishing_mode
+# Test setup_output
+python tools/setup_output.py --base_path /tmp/test_output
+# Expected: Directories created, no errors
 
-# Test scrape_references (mock mode — no actual API calls)
-python tools/scrape_references.py --reference-links '[{"url": "https://example.com/blog", "context": "test"}]' --mock
-# Expected output: JSON array with extracted_text field (mocked content)
+# Test fetch_reference_content with mock URL
+python tools/fetch_reference_content.py \
+  --reference_links '[{"url": "https://example.com", "purpose": "test"}]'
+# Expected: JSON with success/failure per URL (might fail due to network, but should not crash)
 
-# Test plan_content (with sample brand profile)
-python tools/plan_content.py --brand-profile-path test_fixtures/config/brand_profile.json --weekly-theme "Test Theme" --post-plan-path test_fixtures/config/post_plan.json
-# Expected output: JSON array of content briefs with post_id, type, topic fields
+# Test generate_content_strategy with sample inputs
+python tools/generate_content_strategy.py \
+  --brand_profile "$(cat /tmp/brand_profile.json)" \
+  --weekly_theme "Test Theme" \
+  --post_plan '{"reels": 2}' \
+  --reference_content '{}'
+# Expected: JSON with post_briefs array
 
-# Test generate_content (mock LLM mode)
-python tools/generate_content.py --content-briefs '[{"post_id": "test_001", "type": "reel_concept", "topic": "product spotlight"}]' --brand-profile-path test_fixtures/config/brand_profile.json --mock
-# Expected output: JSON array of posts with hook, caption, cta, hashtags, creative_brief
-
-# Test validate_hashtags
-python tools/validate_hashtags.py --posts '[{"post_id": "test_001", "hashtags": ["#EcoStyle", "#Sustainable", "#BANNED_TAG"]}]'
-# Expected output: JSON array with BANNED_TAG removed, validated count
-
-# Test review_content (mock LLM scoring)
-python tools/review_content.py --posts-path test_fixtures/generated_posts.json --brand-profile-path test_fixtures/config/brand_profile.json --mock
-# Expected output: JSON review report with per-post scores, overall status
-
-# Test format_content_pack
-python tools/format_content_pack.py --posts-path test_fixtures/generated_posts.json --weekly-theme "Test Theme" --date "2026-02-17"
-# Expected output: Markdown file written to output/instagram/content_pack_2026-02-17.md
+# Test review_content with sample generated content
+echo '{"posts": [{"post_id": 1, "caption": "Test", "hashtags": ["#test"]}]}' > /tmp/generated.json
+python tools/review_content.py \
+  --generated_content "$(cat /tmp/generated.json)" \
+  --brand_profile "$(cat /tmp/brand_profile.json)" \
+  --reference_content '{}'
+# Expected: JSON with scores and pass/fail decision
 
 # If any tool fails: Read the error, fix the root cause, re-run.
+# NEVER mock to make tests pass — fix the actual code.
 ```
 
 ### Level 3: Integration Tests
-
 ```bash
 # Run THIRD — verify tools work together as a pipeline
 # Simulate the full workflow with sample data
 
-# Step 1: Load config
-python tools/read_config.py --config-dir test_fixtures/config/ > /tmp/config.json
+# Step 1: Validate inputs
+python tools/validate_inputs.py \
+  --brand_profile_path config/brand_profile.json \
+  --weekly_theme "Integration Test" \
+  --post_plan '{"reels": 3, "carousels": 2}' \
+  --reference_links '[]' \
+  --publishing_mode "content_pack_only" > /tmp/validated.json
 
-# Step 2: Scrape references (mock mode)
-python tools/scrape_references.py --reference-links "$(jq -c '.reference_links' /tmp/config.json)" --mock > /tmp/reference_data.json
+# Step 2: Setup output directory
+python tools/setup_output.py --base_path /tmp/integration_test > /tmp/output_dir.json
 
-# Step 3: Plan content
-python tools/plan_content.py \
-  --brand-profile-path test_fixtures/config/brand_profile.json \
-  --weekly-theme "$(jq -r '.weekly_theme' /tmp/config.json)" \
-  --post-plan-path test_fixtures/config/post_plan.json \
-  --reference-data-path /tmp/reference_data.json \
-  > /tmp/content_briefs.json
+# Step 3: Generate content strategy
+python tools/generate_content_strategy.py \
+  --brand_profile "$(jq -r '.brand_profile' /tmp/validated.json)" \
+  --weekly_theme "$(jq -r '.weekly_theme' /tmp/validated.json)" \
+  --post_plan "$(jq -c '.post_plan' /tmp/validated.json)" \
+  --reference_content '{}' > /tmp/strategy.json
 
-# Step 4: Generate posts (mock LLM, no Agent Teams for integration test)
-python tools/generate_content.py \
-  --content-briefs-path /tmp/content_briefs.json \
-  --brand-profile-path test_fixtures/config/brand_profile.json \
-  --mock \
-  --enable-agent-teams false \
-  > /tmp/generated_posts.json
+# Step 4: Generate post content (sequential mode for testing)
+python tools/generate_post_content.py \
+  --content_strategy "$(cat /tmp/strategy.json)" \
+  --brand_profile "$(jq -r '.brand_profile' /tmp/validated.json)" \
+  --use_agent_teams false > /tmp/generated.json
 
-# Step 5: Validate hashtags
-python tools/validate_hashtags.py --posts-path /tmp/generated_posts.json > /tmp/validated_posts.json
-
-# Step 6: Review content
+# Step 5: Review content
 python tools/review_content.py \
-  --posts-path /tmp/validated_posts.json \
-  --brand-profile-path test_fixtures/config/brand_profile.json \
-  --mock \
-  > /tmp/review_report.json
+  --generated_content "$(cat /tmp/generated.json)" \
+  --brand_profile "$(jq -r '.brand_profile' /tmp/validated.json)" \
+  --reference_content '{}' > /tmp/review.json
 
-# Step 7: Verify approved posts exist
-python -c "
-import json
-report = json.load(open('/tmp/review_report.json'))
-assert report['overall_status'] == 'PASS', 'Integration test failed: no approved posts'
-assert len(report['approved_posts']) > 0, 'No posts approved'
-print('Integration test passed: {} posts approved'.format(len(report['approved_posts'])))
-"
+# Step 6: Gate decision
+python tools/gate_decision.py \
+  --review_report "$(cat /tmp/review.json)" \
+  --publishing_mode "content_pack_only" > /tmp/decision.json
+
+# Step 7: Generate content pack
+python tools/generate_content_pack.py \
+  --generated_content "$(cat /tmp/generated.json)" \
+  --review_report "$(cat /tmp/review.json)" \
+  --output_dir /tmp/integration_test
+
+# Step 8: Verify outputs exist
+test -f /tmp/integration_test/content_pack_*.md || echo "ERROR: Markdown content pack missing"
+test -f /tmp/integration_test/content_pack_*.json || echo "ERROR: JSON content pack missing"
 
 # Verify workflow.md references match actual tool files
-python -c "
-import re, pathlib
-workflow = pathlib.Path('workflow.md').read_text()
-tool_refs = re.findall(r'tools/(\w+\.py)', workflow)
-for tool in tool_refs:
-    assert pathlib.Path(f'tools/{tool}').exists(), f'workflow.md references missing tool: {tool}'
-print('All workflow tool references valid')
-"
+grep -q "validate_inputs.py" workflow.md || echo "ERROR: validate_inputs.py not in workflow.md"
+grep -q "generate_post_content.py" workflow.md || echo "ERROR: generate_post_content.py not in workflow.md"
 
-# Verify CLAUDE.md documents all subagents
-python -c "
-import pathlib
-claude_md = pathlib.Path('CLAUDE.md').read_text()
-subagents = [p.stem for p in pathlib.Path('.claude/agents/').glob('*.md')]
-for subagent in subagents:
-    assert subagent in claude_md, f'CLAUDE.md does not document subagent: {subagent}'
-print('All subagents documented in CLAUDE.md')
-"
+# Verify CLAUDE.md documents all tools and subagents
+grep -q "content-strategist" CLAUDE.md || echo "ERROR: content-strategist subagent not in CLAUDE.md"
+grep -q "review_content.py" CLAUDE.md || echo "ERROR: review_content.py not in CLAUDE.md"
+
+# Verify .github/workflows/ YAML is valid
+python -c "import yaml; yaml.safe_load(open('.github/workflows/weekly-instagram.yml'))"
+
+echo "Integration test complete. Check for any ERROR messages above."
 ```
 
 ---
 
 ## Final Validation Checklist
-
 - [ ] All tools pass Level 1 (syntax, imports, structure)
 - [ ] All tools pass Level 2 (unit tests with sample data)
 - [ ] Pipeline passes Level 3 (integration test end-to-end)
@@ -1066,54 +1320,65 @@ print('All subagents documented in CLAUDE.md')
 - [ ] CLAUDE.md documents all tools, subagents, MCPs, and secrets
 - [ ] .github/workflows/ has timeout-minutes and failure notifications
 - [ ] .env.example lists all required environment variables
-- [ ] .gitignore excludes .env, __pycache__/, credentials, output/ (except .gitkeep)
+- [ ] .gitignore excludes .env, __pycache__/, credentials, temp files
 - [ ] README.md covers all three execution paths (CLI, Actions, Agent HQ)
 - [ ] No hardcoded secrets anywhere in the codebase
-- [ ] Subagent files have valid YAML frontmatter and specific system prompts
-- [ ] requirements.txt lists all Python dependencies
-- [ ] Instagram Graph API rate limiting (200 calls/hour) is handled with retry + backoff
-- [ ] All caption lengths validated before API call (≤ 2200 chars)
-- [ ] Brand voice scoring threshold is 85%+ for approval
-- [ ] Fallback from auto_publish to content_pack_only on persistent failures
+- [ ] Subagent files (.claude/agents/*.md) have valid YAML frontmatter and specific system prompts
+- [ ] requirements.txt lists all Python dependencies with versions
+- [ ] config/brand_profile.json example exists with all required fields
+- [ ] All API rate limits documented in CLAUDE.md (Instagram: 200/hour, Firecrawl: varies by plan)
+- [ ] Auto-publish gate decision is clearly documented (score >= 80/100 AND mode = auto_publish)
 
 ---
 
 ## Anti-Patterns to Avoid
-
-- Do not hardcode Instagram access tokens — use GitHub Secrets or .env
-- Do not skip quality review because "it should match brand voice" — always run review gates
-- Do not fail the entire pipeline if one post generation fails — continue with successful posts
-- Do not use Agent Teams when fewer than 3 posts are being generated — overhead not justified
-- Do not call Instagram API without retry logic — rate limits WILL happen
-- Do not generate captions longer than 2200 characters — validate before API call
-- Do not use banned hashtags — maintain and check against banned list
-- Do not skip the fallback to content_pack_only if auto_publish fails — always provide manual pack option
-- Do not commit Instagram access tokens or API responses with sensitive data — sanitize logs
-- Do not ignore Firecrawl rate limits — implement HTTP fallback for reference scraping
-- Do not regenerate posts infinitely — max 2 retry cycles, then halt for manual review
-- Do not use generic hashtags only — mix broad (100k+ posts) and niche (5k-50k) for better reach
+- Do not hardcode API keys, tokens, or credentials — use GitHub Secrets or .env
+- Do not use `git add -A` or `git add .` — stage only output files explicitly
+- Do not skip validation because "it should work" — run all three levels
+- Do not catch bare `except:` — always catch specific exception types
+- Do not build tools that require interactive input — all tools must run unattended
+- Do not create MCP-dependent tools without HTTP/API fallbacks (Firecrawl → HTTP+BeautifulSoup)
+- Do not design subagents that call other subagents — only the main agent delegates
+- Do not use Agent Teams when fewer than 3 independent tasks exist — sequential is sufficient
+- Do not commit .env files, credentials, or API keys to the repository
+- Do not ignore failing tests — fix the root cause, never mock to pass
+- Do not generate workflow steps without failure modes and fallback actions
+- Do not write tools without try/except, logging, type hints, and a main() function
+- Do not assume Instagram Graph API media URLs are accessible — must be public HTTPS
+- Do not exceed Instagram rate limits (200 calls/hour) — implement rate limit detection and pausing
+- Do not auto-publish without quality review passing — this is a critical safety gate
+- Do not generate more than 12 hashtags per post — Instagram optimal is 8-12, not 30
+- Do not exceed 2200 character caption limit — optimal is 125-150 for full visibility
 
 ---
 
-## Confidence Score: 9/10
+## Confidence Score: 8/10
 
 **Score rationale:**
-- **Workflow clarity**: High confidence — Generate > Review > Publish pattern is well-established, all steps are clearly defined with failure modes
-- **Tool implementations**: High confidence — All tools follow catalog patterns (firecrawl_scrape, structured_extract, rest_client), dependencies are known and documented
-- **Instagram API integration**: Medium-high confidence — Instagram Graph API is well-documented, but access token management and rate limiting require careful implementation. Fallback to content_pack_only mitigates risk.
-- **Brand voice scoring**: Medium-high confidence — LLM-based brand voice scoring is subjective, but 85% threshold with retry cycles provides reasonable quality control
-- **Agent Teams parallelization**: High confidence — 6 independent post generation tasks with clear merge logic, proven pattern from previous builds (marketing-pipeline, blog-repurpose)
-- **Subagent architecture**: High confidence — 6 specialist subagents with clear domains, sequential delegation, no circular dependencies
+- **Workflow pattern match**: High confidence. This is a textbook Generate > Review > Publish pattern with clear two-pass process and quality gates. The pattern is proven in similar systems (lead-gen-machine, marketing-pipeline, content-tone-repurposer). Confidence: **high**
+
+- **Instagram Graph API integration**: Medium-high confidence. The API is well-documented, but has specific requirements (public HTTPS URLs for media, rate limits, auth token lifecycle). The PRP accounts for these, but first-time implementation may encounter edge cases. Fallback to manual content packs mitigates risk. Confidence: **medium-high**
+
+- **Multi-dimensional quality review**: High confidence. The 5-dimension scoring (brand voice, compliance, hashtags, format, claims) is based on proven multi_dimension_scorer pattern from marketing-pipeline. Claude excels at brand voice analysis. The pattern is proven. Confidence: **high**
+
+- **Agent Teams parallelization**: High confidence. Post generation is perfectly suited for Agent Teams (3-7 independent tasks, no data dependencies). The pattern is proven in content-tone-repurposer. Sequential fallback ensures the system works regardless. Confidence: **high**
+
+- **Subagent architecture**: High confidence. 6 specialist subagents (strategist, copywriter, hashtag, creative-director, reviewer, publisher) with clear scopes. Follows the "one subagent per domain" rule. No cross-subagent calls. Proven pattern. Confidence: **high**
+
+- **Brand voice matching**: Medium confidence. Brand voice alignment requires examples of on-brand vs off-brand content in the prompt. The PRP includes brand_profile with tone/style, but first run may require prompt tuning. The review step catches mismatches. Confidence: **medium**
+
+- **Reference content extraction**: High confidence. Firecrawl + HTTP fallback pattern is proven (lead-gen-machine, marketing-pipeline). Graceful degradation handles missing references. Confidence: **high**
+
+- **Compliance checks**: Medium confidence. Banned topics and prohibited claims scanning is straightforward keyword/phrase matching + Claude analysis. However, regulatory compliance (FTC guidelines) may require domain expertise. The PRP flags this but doesn't implement full legal review. Confidence: **medium**
 
 **Ambiguity flags** (areas requiring clarification before building):
-- [ ] **Instagram API access token lifecycle**: How often does the token expire? Is there a refresh token mechanism, or manual rotation? This affects the publisher-specialist error handling.
-  - **Recommendation**: Document token rotation instructions in README.md; if Graph API supports refresh tokens, implement auto-refresh in publish_to_instagram.py
-- [ ] **Sample brand profile**: Does the user have a sample brand_profile.json with actual brand voice examples for brand voice scoring? The LLM needs reference posts to compare against.
-  - **Recommendation**: Include a template brand_profile.json in test_fixtures/ with example fields; if user provides real examples, scoring will be more accurate
-- [ ] **Image/video media**: The PRP mentions "image prompts" and "creative briefs" but does not specify whether the system should GENERATE actual images/videos (e.g., via DALL-E, Midjourney) or just provide prompts for manual creation.
-  - **Recommendation**: Default to "prompts only" mode (creative_brief + image_prompt fields in JSON); add a future enhancement flag for AI image generation via Replicate/DALL-E if requested
+- [ ] **Instagram media handling**: The PRP assumes this system does NOT generate images/videos (it generates captions/hashtags/creative briefs only). Image prompts and creative briefs are guidance for manual content creation or briefing designers. Confirm this is correct. If images must be generated, add image generation tools (Replicate, DALL-E) and update workflow.
 
-**If any ambiguity flag is checked, clarify with the user before proceeding to build.**
+- [ ] **Instagram authentication flow**: The PRP requires a long-lived Instagram access token (60 days). Does the user already have this token, or does the system need to implement the OAuth flow to obtain it? If OAuth is required, add auth flow tools and documentation.
+
+- [ ] **Scheduled posting**: The PRP mentions "scheduled posts" in the Instagram API section. Does the user want immediate publishing or scheduled future publishing? Scheduled publishing has additional API requirements (Business/Creator account, max 75 scheduled posts). Clarify and document in workflow.
+
+**If any ambiguity flag is checked, ask the user to clarify before proceeding. Otherwise, confidence is 8/10 — ready to build.**
 
 ---
 
