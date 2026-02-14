@@ -1,0 +1,206 @@
+name: Instagram Publisher
+
+on:
+  schedule:
+    # Run every 15 minutes to process queue
+    - cron: '*/15 * * * *'
+  
+  workflow_dispatch:
+    inputs:
+      content:
+        description: 'JSON content payload for immediate publish (optional)'
+        required: false
+        type: string
+      use_parallel:
+        description: 'Use Agent Teams for batch processing (3+ posts)'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+      
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+      
+      - name: Create inline content file (if provided)
+        if: ${{ github.event.inputs.content != '' }}
+        run: |
+          mkdir -p input/queue
+          echo '${{ github.event.inputs.content }}' > input/queue/inline_post.json
+      
+      - name: Run Instagram Publisher
+        env:
+          INSTAGRAM_ACCESS_TOKEN: ${{ secrets.INSTAGRAM_ACCESS_TOKEN }}
+          INSTAGRAM_BUSINESS_ACCOUNT_ID: ${{ secrets.INSTAGRAM_BUSINESS_ACCOUNT_ID }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          USE_PARALLEL: ${{ github.event.inputs.use_parallel || 'false' }}
+        run: |
+          # Run Claude Code with workflow.md
+          # This will execute the full publishing workflow
+          
+          echo "Starting Instagram Publisher workflow..."
+          echo "USE_PARALLEL=${USE_PARALLEL}"
+          
+          # Check if there's content to process
+          if [ -z "$(ls -A input/queue 2>/dev/null)" ] && [ "${{ github.event.inputs.content }}" == "" ]; then
+            echo "ℹ️ No content in queue. Exiting gracefully."
+            exit 0
+          fi
+          
+          # For now, execute workflow steps sequentially
+          # TODO: Integrate with Claude Code CLI when available
+          
+          echo "Processing queue..."
+          
+          # Process each file in the queue
+          for content_file in input/queue/*.json; do
+            [ -e "$content_file" ] || continue
+            
+            echo "Processing: $content_file"
+            
+            # Step 1: Validate
+            echo "→ Validating content..."
+            if ! python tools/validate_content.py --file "$content_file"; then
+              echo "✗ Validation failed for $content_file"
+              python tools/write_result.py \
+                --file "$content_file" \
+                --output-dir output/failed
+              rm "$content_file"
+              continue
+            fi
+            
+            # Step 2: Create container
+            echo "→ Creating container..."
+            CONTENT=$(cat "$content_file")
+            IMAGE_URL=$(echo "$CONTENT" | jq -r '.image_url')
+            CAPTION=$(echo "$CONTENT" | jq -r '.caption')
+            ACCOUNT_ID=${INSTAGRAM_BUSINESS_ACCOUNT_ID}
+            
+            CREATE_RESULT=$(python tools/instagram_create_container.py \
+              --image-url "$IMAGE_URL" \
+              --caption "$CAPTION" \
+              --business-account-id "$ACCOUNT_ID")
+            
+            CREATE_STATUS=$(echo "$CREATE_RESULT" | jq -r '.status')
+            
+            if [ "$CREATE_STATUS" != "success" ]; then
+              echo "✗ Container creation failed"
+              echo "$CREATE_RESULT" | jq '{status: "failed", error_code: .error_code, error_message: .error_message, caption: "'"$CAPTION"'", image_url: "'"$IMAGE_URL"'", business_account_id: "'"$ACCOUNT_ID"'"}' > /tmp/failed_result.json
+              python tools/write_result.py \
+                --file /tmp/failed_result.json \
+                --output-dir output/failed
+              rm "$content_file"
+              continue
+            fi
+            
+            CREATION_ID=$(echo "$CREATE_RESULT" | jq -r '.creation_id')
+            echo "✓ Container created: $CREATION_ID"
+            
+            # Step 3: Publish container
+            echo "→ Publishing container..."
+            PUBLISH_RESULT=$(python tools/instagram_publish_container.py \
+              --creation-id "$CREATION_ID" \
+              --business-account-id "$ACCOUNT_ID")
+            
+            PUBLISH_STATUS=$(echo "$PUBLISH_RESULT" | jq -r '.status')
+            
+            if [ "$PUBLISH_STATUS" == "published" ]; then
+              POST_ID=$(echo "$PUBLISH_RESULT" | jq -r '.post_id')
+              PERMALINK=$(echo "$PUBLISH_RESULT" | jq -r '.permalink')
+              echo "✓ Published: $POST_ID"
+              echo "  Permalink: $PERMALINK"
+              
+              # Write success result
+              echo "$PUBLISH_RESULT" | jq '. + {caption: "'"$CAPTION"'", image_url: "'"$IMAGE_URL"'", business_account_id: "'"$ACCOUNT_ID"'"}' > /tmp/success_result.json
+              python tools/write_result.py \
+                --file /tmp/success_result.json \
+                --output-dir output/published
+            else
+              echo "✗ Publish failed"
+              echo "$PUBLISH_RESULT" | jq '. + {caption: "'"$CAPTION"'", image_url: "'"$IMAGE_URL"'", business_account_id: "'"$ACCOUNT_ID"'"}' > /tmp/failed_result.json
+              python tools/write_result.py \
+                --file /tmp/failed_result.json \
+                --output-dir output/failed
+            fi
+            
+            # Remove processed file from queue
+            rm "$content_file"
+          done
+          
+          echo "Queue processing complete."
+      
+      - name: Generate report
+        if: always()
+        run: |
+          python tools/generate_report.py \
+            --published-dir output/published \
+            --failed-dir output/failed \
+            --output logs/$(date +%Y-%m-%d)_publish_report.md
+      
+      - name: Commit results
+        if: always()
+        run: |
+          # Stage only output and log files
+          git add output/published/*.json 2>/dev/null || true
+          git add output/failed/*.json 2>/dev/null || true
+          git add logs/*.md 2>/dev/null || true
+          
+          # Check if there are changes to commit
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          
+          # Commit
+          TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
+          PUBLISHED_COUNT=$(ls -1 output/published/*.json 2>/dev/null | wc -l)
+          FAILED_COUNT=$(ls -1 output/failed/*.json 2>/dev/null | wc -l)
+          
+          git commit -m "Published ${PUBLISHED_COUNT} posts, ${FAILED_COUNT} failures [${TIMESTAMP}]"
+          
+          # Push with retry
+          for i in 1 2; do
+            if git push origin main; then
+              echo "✓ Pushed successfully"
+              break
+            else
+              if [ $i -eq 1 ]; then
+                echo "Push failed, retrying with rebase..."
+                git pull --rebase origin main
+              else
+                echo "✗ Push failed after retry"
+                exit 1
+              fi
+            fi
+          done
+      
+      - name: Upload failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: publish-failures-${{ github.run_id }}
+          path: |
+            output/failed/*.json
+            logs/*.md
+          retention-days: 30
