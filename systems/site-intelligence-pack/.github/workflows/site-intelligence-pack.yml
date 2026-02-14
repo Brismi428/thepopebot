@@ -1,0 +1,103 @@
+name: Site Intelligence Pack
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_domain:
+        description: 'Domain to analyze (e.g., stripe.com)'
+        required: true
+      max_pages:
+        description: 'Maximum pages to crawl'
+        required: false
+        default: '200'
+      deep_extract_count:
+        description: 'Number of top pages to deep-extract'
+        required: false
+        default: '15'
+      batch_mode:
+        description: 'Process all domains in inputs/targets.csv'
+        required: false
+        default: 'false'
+  
+  schedule:
+    - cron: '0 2 * * *'  # Daily at 2 AM UTC
+
+jobs:
+  build-intelligence-pack:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+      
+      - name: Run intelligence pack workflow
+        env:
+          FIRECRAWL_API_KEY: ${{ secrets.FIRECRAWL_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TARGET_DOMAIN: ${{ github.event.inputs.target_domain }}
+          MAX_PAGES: ${{ github.event.inputs.max_pages || '200' }}
+          DEEP_EXTRACT_COUNT: ${{ github.event.inputs.deep_extract_count || '15' }}
+          BATCH_MODE: ${{ github.event.inputs.batch_mode || 'false' }}
+        run: |
+          # Execute the workflow via Claude Code
+          # In practice, this would invoke the main workflow orchestrator
+          echo "Executing Site Intelligence Pack workflow..."
+          echo "Domain: $TARGET_DOMAIN"
+          echo "Max pages: $MAX_PAGES"
+          echo "Deep extract count: $DEEP_EXTRACT_COUNT"
+          
+          # For manual trigger, process single domain
+          if [ "$BATCH_MODE" = "false" ]; then
+            python -c "
+import os
+import sys
+
+# Add current directory to path
+sys.path.insert(0, 'tools')
+
+# This is a simplified execution example
+# In practice, Claude Code would orchestrate the full workflow
+print('Processing domain:', os.environ.get('TARGET_DOMAIN'))
+print('Workflow execution would happen here')
+"
+          fi
+      
+      - name: Commit outputs
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          
+          # Stage only output files
+          git add outputs/
+          
+          # Check if there are changes
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Add Site Intelligence Pack for ${{ github.event.inputs.target_domain || 'scheduled run' }}"
+            git push
+          fi
+      
+      - name: Report failure (if applicable)
+        if: failure()
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Workflow failed, creating GitHub Issue..."
+          # This would call github_create_issue.py
+          python tools/github_create_issue.py \
+            --repo "${{ github.repository }}" \
+            --title "Site Intelligence Pack FAILED: ${{ github.event.inputs.target_domain }}" \
+            --body "Target: ${{ github.event.inputs.target_domain }}, Timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ), See workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            --labels "site-intelligence-pack" "failed-run"
