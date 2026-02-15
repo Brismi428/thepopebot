@@ -382,6 +382,24 @@ Configure secrets in:
 
 ---
 
+## Web Frontend & API
+
+The Invoice Generator has a web UI and API bridge for generating invoices interactively.
+
+### Access
+
+- **URL:** `https://invoice.wat-factory.cloud`
+- **Authentication:** Cloudflare Access (email OTP) + Caddy basic auth fallback
+- **Traffic flow:** Cloudflare Tunnel → Caddy → invoice-generator container (:8000)
+
+### Deployment
+
+- **Docker:** Built from `api/Dockerfile` (python:3.11-slim + Node.js 20 for frontend build + uvicorn)
+- **docker-compose service:** `invoice-generator` in `/home/deploy/services/docker-compose.yml`
+- **Environment variables:** `CORS_ORIGINS`
+
+---
+
 ## Troubleshooting
 
 ### "Validation failed: due_date must be >= invoice_date"

@@ -63,6 +63,12 @@ temp/
 htmlcov/
 *.cover
 
+# Node / Next.js
+node_modules/
+.next/
+out/
+package-lock.json
+
 # Local development
 local_test/
 scratch/

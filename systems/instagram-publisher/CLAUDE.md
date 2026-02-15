@@ -471,6 +471,69 @@ For 100 posts/day:
 
 ---
 
+## Web Frontend & API
+
+The Instagram Publisher has a web UI and API bridge for running tools interactively.
+
+### Access
+
+- **URL:** `https://instagram.wat-factory.cloud`
+- **Authentication:** Cloudflare Access (email OTP) + Caddy basic auth fallback
+- **Traffic flow:** Cloudflare Tunnel → Caddy → instagram-publisher container (:8000)
+
+### Frontend
+
+Next.js 14 static export with:
+- **Landing page** (`/`) — Overview, feature cards, usage instructions
+- **Dashboard** (`/dashboard/`) — Tool cards with usage instructions
+- **7 tool pages** — Each tool has a form (left) and result viewer (right)
+- **Pipeline page** (`/pipeline/`) — 7-step wizard to run all tools in sequence
+
+### API Endpoints
+
+All tools are available as POST endpoints:
+
+| Endpoint | Tool |
+|----------|------|
+| `POST /api/validate-content` | Validate content against Instagram requirements |
+| `POST /api/enrich-content` | AI-powered hashtag/alt-text/caption enrichment |
+| `POST /api/instagram-create-container` | Create Instagram media container |
+| `POST /api/instagram-publish-container` | Publish container to Instagram |
+| `POST /api/write-result` | Write results to output directory |
+| `POST /api/generate-report` | Generate markdown summary report |
+| `POST /api/git-commit` | Stage, commit, and push files |
+| `POST /api/run-pipeline` | Execute all 7 tools in sequence |
+| `GET /api/health` | Health check |
+
+The API calls Python tools directly via `main(**kwargs)` — no subprocess or sys.argv manipulation.
+
+### Deployment
+
+- **Docker:** Built from `api/Dockerfile` (python:3.11-slim + Node.js 20 for frontend build + uvicorn)
+- **docker-compose service:** `instagram-publisher` in `/home/deploy/services/docker-compose.yml`
+- **Environment variables:** `CORS_ORIGINS`, `INSTAGRAM_ACCESS_TOKEN`, `INSTAGRAM_BUSINESS_ACCOUNT_ID`, `ANTHROPIC_API_KEY`
+
+### File Structure (API additions)
+
+```
+instagram-publisher/
+├── api/
+│   ├── main.py              # FastAPI app with all endpoints
+│   ├── requirements.txt     # fastapi, uvicorn, pydantic
+│   ├── Dockerfile           # Multi-stage build (Python + Node.js)
+│   └── models/              # Pydantic request models (one per tool)
+├── frontend/
+│   ├── src/
+│   │   ├── app/(marketing)/page.tsx   # Landing page
+│   │   ├── app/(dashboard)/           # Dashboard + 7 tool pages + pipeline
+│   │   ├── components/                # ToolForm, PipelineWizard, ResultViewer
+│   │   └── lib/api.ts                 # API client
+│   ├── package.json
+│   └── next.config.js                 # Static export
+```
+
+---
+
 ## Security Notes
 
 - **Secrets:** Never commit `INSTAGRAM_ACCESS_TOKEN` or any credentials to the repo

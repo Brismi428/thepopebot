@@ -14,8 +14,16 @@ secrets.json
 # Pi skills symlinked at runtime from /pi-skills in Docker
 .pi/skills/brave-search
 
+# Python
+__pycache__/
+*.pyc
+
 # Node
 node_modules/
+
+# Next.js build artifacts
+.next/
+out/
 
 # OS files
 .DS_Store

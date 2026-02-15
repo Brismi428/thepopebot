@@ -404,7 +404,68 @@ The factory learns from every system it builds:
 
 ---
 
-## Part 3: Operational Rules
+## Part 3: Deployment Infrastructure
+
+### Domain and DNS
+
+The domain `wat-factory.cloud` uses Cloudflare DNS (nameservers: `grant.ns.cloudflare.com`, `paris.ns.cloudflare.com`). Domain registration remains on Hostinger.
+
+### Subdomains
+
+| Subdomain | Service | Backend |
+|-----------|---------|---------|
+| `bot.wat-factory.cloud` | Event Handler + Dashboard | event-handler:3000 + static files |
+| `media.wat-factory.cloud` | NCA Media Toolkit | nca-toolkit:8080 |
+| `invoice.wat-factory.cloud` | Invoice Generator | invoice-generator:8000 |
+| `instagram.wat-factory.cloud` | Instagram Publisher | instagram-publisher:8000 |
+
+### Traffic Flow
+
+All traffic routes through Cloudflare Tunnel (no direct IP access):
+
+```
+User → Cloudflare Edge → Cloudflare Access (email OTP) → Tunnel → cloudflared → Caddy (:80) → backend service
+```
+
+- **Cloudflare Tunnel:** `wat-factory` (ID: `1be36f8d-b786-486a-8bbd-8f291ed080f3`). Runs as a Docker container with host networking. Connects outbound to Cloudflare — no inbound ports needed.
+- **Cloudflare Access (Zero Trust):** All 4 subdomains require email OTP authentication. Only the authorized email can access.
+- **Caddy:** Local reverse proxy that routes subdomains to backend containers. Also enforces basic auth as a fallback layer (username: `admin`, bcrypt hash in Caddyfile). Trusted IPs (user's IPv6 prefix, localhost, Docker network) bypass basic auth.
+
+### Docker Compose Services
+
+All services run from `/home/deploy/services/docker-compose.yml`:
+
+| Service | Image/Build | Port | Network |
+|---------|-------------|------|---------|
+| `cloudflared` | `cloudflare/cloudflared:latest` | host networking | host |
+| `caddy` | `caddy:2-alpine` | 80, 443 | proxy |
+| `event-handler` | `./event-handler` | 3000 (internal) | proxy |
+| `nca-toolkit` | `./nca-toolkit` | 8080 (internal) | proxy |
+| `invoice-generator` | Built from thepopebot/systems/invoice-generator | 8000 (internal) | proxy |
+| `instagram-publisher` | Built from thepopebot/systems/instagram-publisher | 8000 (internal) | proxy |
+
+No services expose ports directly to the host (except Caddy on 80/443 for the tunnel). All backend services use `expose` only (Docker internal).
+
+### Security Layers
+
+1. **Cloudflare Tunnel** — No public IP exposure; outbound-only connection
+2. **Cloudflare Access** — Email OTP authentication at the edge
+3. **Caddy basic auth** — Fallback for non-trusted IPs
+4. **Caddy IP allowlist** — User's IPv6 prefix + localhost + Docker network bypass auth
+5. **No direct port access** — Backend ports not mapped to host
+
+### Key Config Files
+
+| File | Purpose |
+|------|---------|
+| `/home/deploy/services/docker-compose.yml` | All service definitions |
+| `/home/deploy/services/caddy/Caddyfile` | Reverse proxy, auth, security headers |
+| `/home/deploy/services/.env` | DOMAIN, TUNNEL_TOKEN, API keys |
+| `/home/deploy/services/CLAUDE_EXTENSION_GUIDE.md` | Guide for delegating dashboard tasks to the Claude browser extension |
+
+---
+
+## Part 4: Operational Rules
 
 ### CRITICAL Git Rules
 
