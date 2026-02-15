@@ -3,6 +3,10 @@
 @tailwind utilities;
 
 @layer base {
+  /* Prevent grid/flex children from overflowing their container */
+  .grid > * {
+    min-width: 0;
+  }
   :root {
     --bg-primary: #FFFFFF;
     --bg-secondary: #F8FAFC;
