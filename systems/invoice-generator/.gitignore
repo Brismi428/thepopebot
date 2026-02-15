@@ -46,6 +46,15 @@ temp/
 .DS_Store
 Thumbs.db
 
+# Runtime state
+state/
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+package-lock.json
+
 # Test output
 .pytest_cache/
 .coverage

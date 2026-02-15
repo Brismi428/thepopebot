@@ -20,6 +20,12 @@ build/
 *.swo
 *~
 
+# Node / Next.js
+node_modules/
+.next/
+out/
+package-lock.json
+
 # OS
 .DS_Store
 Thumbs.db
