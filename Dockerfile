@@ -46,6 +46,13 @@ RUN npm install
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
+RUN useradd --create-home --shell /bin/bash agent \
+    && mkdir -p /home/agent/.pi/agent /job \
+    && cp -r /root/.pi/agent /home/agent/.pi/ 2>/dev/null || true \
+    && chown -R agent:agent /home/agent /job /pi-skills
+
+USER agent
+
 WORKDIR /job
 
 ENTRYPOINT ["/entrypoint.sh"]

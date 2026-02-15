@@ -32,6 +32,12 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+ALLOWED_GIT_SUBCOMMANDS = {
+    "init", "add", "commit", "checkout", "push", "pull", "status",
+    "branch", "log", "diff", "remote", "fetch", "merge", "tag",
+}
+
+
 def run_git(args: list[str], cwd: str | None = None) -> dict[str, Any]:
     """
     Run a git command and return the result.
@@ -43,6 +49,13 @@ def run_git(args: list[str], cwd: str | None = None) -> dict[str, Any]:
     Returns:
         dict with stdout, stderr, and return code
     """
+    if not args:
+        return {"stdout": "", "stderr": "No git subcommand provided", "returncode": 1}
+
+    subcommand = args[0]
+    if subcommand not in ALLOWED_GIT_SUBCOMMANDS:
+        return {"stdout": "", "stderr": f"Git subcommand not allowed: {subcommand}", "returncode": 1}
+
     cmd = ["git"] + args
     logger.info("Running: %s", " ".join(cmd))
 
@@ -75,7 +88,7 @@ def init_repo(path: str) -> dict[str, Any]:
 
 def add_files(files: list[str], cwd: str | None = None) -> dict[str, Any]:
     """Stage files for commit."""
-    result = run_git(["add"] + files, cwd=cwd)
+    result = run_git(["add", "--"] + files, cwd=cwd)
     if result["returncode"] == 0:
         logger.info("Staged %d file(s)", len(files))
     return result
@@ -91,6 +104,9 @@ def commit(message: str, cwd: str | None = None) -> dict[str, Any]:
 
 def create_branch(name: str, cwd: str | None = None) -> dict[str, Any]:
     """Create and switch to a new branch."""
+    import re
+    if not re.match(r'^[\w./-]+$', name):
+        return {"stdout": "", "stderr": f"Invalid branch name: {name}", "returncode": 1}
     result = run_git(["checkout", "-b", name], cwd=cwd)
     if result["returncode"] == 0:
         logger.info("Created branch: %s", name)
